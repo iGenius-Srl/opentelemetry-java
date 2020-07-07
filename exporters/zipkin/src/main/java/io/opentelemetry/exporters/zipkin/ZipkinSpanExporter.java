@@ -352,7 +352,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @since 0.4.0
      */
     public Builder setEndpoint(String endpoint) {
-      setSender(URLConnectionSender.create(endpoint));
+      setSender(CustomSender.create(endpoint));
       return this;
     }
 
