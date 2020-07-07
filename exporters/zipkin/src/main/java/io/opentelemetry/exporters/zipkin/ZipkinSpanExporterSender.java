@@ -34,9 +34,9 @@ import zipkin2.reporter.Sender;
  *
  * <p>This sender is thread-safe.
  */
-public final class CustomSender extends Sender {
+public final class ZipkinSpanExporterSender extends Sender {
   /** Creates a sender that posts {@link Encoding#JSON} messages. */
-  public static CustomSender create(String endpoint) {
+  public static ZipkinSpanExporterSender create(String endpoint) {
     return newBuilder().endpoint(endpoint).build();
   }
 
@@ -51,7 +51,7 @@ public final class CustomSender extends Sender {
     int connectTimeout = 10 * 1000, readTimeout = 60 * 1000;
     boolean compressionEnabled = true;
 
-    Builder(CustomSender sender) {
+    Builder(ZipkinSpanExporterSender sender) {
       this.endpoint = sender.endpoint;
       this.encoding = sender.encoding;
       this.messageMaxBytes = sender.messageMaxBytes;
@@ -117,8 +117,8 @@ public final class CustomSender extends Sender {
       return this;
     }
 
-    public final CustomSender build() {
-      return new CustomSender(this);
+    public final ZipkinSpanExporterSender build() {
+      return new ZipkinSpanExporterSender(this);
     }
 
     Builder() {
@@ -133,7 +133,7 @@ public final class CustomSender extends Sender {
   final int connectTimeout, readTimeout;
   final boolean compressionEnabled;
 
-  CustomSender(Builder builder) {
+  ZipkinSpanExporterSender(Builder builder) {
     if (builder.endpoint == null) throw new NullPointerException("endpoint == null");
     this.endpoint = builder.endpoint;
     this.encoding = builder.encoding;
