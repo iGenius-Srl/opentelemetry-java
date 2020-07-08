@@ -343,7 +343,6 @@ public final class ZipkinSpanExporter implements SpanExporter {
       return this;
     }
 
-
     public Builder setAuthToken(String token) {
       this.token = token;
       return this;
