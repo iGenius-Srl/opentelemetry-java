@@ -17,7 +17,7 @@ subprojects {
 }
 
 configure(opentelemetryProjects) {
-    apply plugin: 'checkstyle'
+//    apply plugin: 'checkstyle'
     apply plugin: 'eclipse'
     apply plugin: 'java'
     apply plugin: 'java-library'
@@ -169,12 +169,12 @@ configure(opentelemetryProjects) {
         ]
     }
 
-    checkstyle {
-        configFile = file("$rootDir/buildscripts/checkstyle.xml")
-        toolVersion = "8.12"
-        ignoreFailures = false
-        configProperties["rootDir"] = rootDir
-    }
+//    checkstyle {
+//        configFile = file("$rootDir/buildscripts/checkstyle.xml")
+//        toolVersion = "8.12"
+//        ignoreFailures = false
+//        configProperties["rootDir"] = rootDir
+//    }
 
     jacoco { toolVersion = "0.8.5" }
 

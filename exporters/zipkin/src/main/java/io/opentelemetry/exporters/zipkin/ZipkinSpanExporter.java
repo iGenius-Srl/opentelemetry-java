@@ -287,6 +287,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
     private BytesEncoder<Span> encoder = SpanBytesEncoder.JSON_V2;
     private Sender sender;
     private String serviceName;
+    private String token = "";
 
     /**
      * Label of the remote node in the service graph, such as "favstar". Avoid names with variables
@@ -342,6 +343,12 @@ public final class ZipkinSpanExporter implements SpanExporter {
       return this;
     }
 
+
+    public Builder setAuthToken(String token) {
+      this.token = token;
+      return this;
+    }
+
     /**
      * Sets the zipkin endpoint. This will use the endpoint to assign a {@link URLConnectionSender}
      * instance to this builder.
@@ -352,7 +359,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @since 0.4.0
      */
     public Builder setEndpoint(String endpoint) {
-      setSender(ZipkinSpanExporterSender.create(endpoint));
+      setSender(ZipkinSpanExporterSender.create(endpoint, token));
       return this;
     }
 
