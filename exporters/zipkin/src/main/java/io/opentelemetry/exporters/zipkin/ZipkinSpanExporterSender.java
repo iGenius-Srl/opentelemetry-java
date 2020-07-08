@@ -21,6 +21,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
+import javax.annotation.Nullable;
 import zipkin2.Call;
 import zipkin2.Callback;
 import zipkin2.CheckResult;
@@ -35,9 +36,14 @@ import zipkin2.reporter.Sender;
  * <p>This sender is thread-safe.
  */
 public final class ZipkinSpanExporterSender extends Sender {
-  /** Creates a sender that posts {@link Encoding#JSON} messages. */
-  public static ZipkinSpanExporterSender create(String endpoint) {
-    return newBuilder().endpoint(endpoint).build();
+  /**
+   * Creates a sender that posts {@link Encoding#JSON} messages.
+   *
+   * @param endpoint random
+   * @return ZipkinSpanExporterSender
+   */
+  public static ZipkinSpanExporterSender create(String endpoint, String token) {
+    return newBuilder().endpoint(endpoint).authToken(token).build();
   }
 
   public static Builder newBuilder() {
@@ -48,17 +54,22 @@ public final class ZipkinSpanExporterSender extends Sender {
     URL endpoint;
     Encoding encoding = Encoding.JSON;
     int messageMaxBytes = 500_000;
-    int connectTimeout = 10 * 1000, readTimeout = 60 * 1000;
+    int connectTimeout = 10 * 1000;
+    int readTimeout = 60 * 1000;
+    String token;
     boolean compressionEnabled = true;
 
     Builder(ZipkinSpanExporterSender sender) {
       this.endpoint = sender.endpoint;
+      this.token = sender.token;
       this.encoding = sender.encoding;
       this.messageMaxBytes = sender.messageMaxBytes;
       this.connectTimeout = sender.connectTimeout;
       this.readTimeout = sender.readTimeout;
       this.compressionEnabled = sender.compressionEnabled;
     }
+
+    Builder() {}
 
     /**
      * No default. The POST URL for zipkin's <a href="https://zipkin.io/zipkin-api/#/">v2 api</a>,
@@ -87,6 +98,12 @@ public final class ZipkinSpanExporterSender extends Sender {
       return this;
     }
 
+    /** Default is an empty string. It is needed in case of authorized calls */
+    public Builder authToken(String token) {
+      this.token = token;
+      return this;
+    }
+
     /** Default 60 * 1000 milliseconds. 0 implies no timeout. */
     public Builder readTimeout(int readTimeout) {
       this.readTimeout = readTimeout;
@@ -106,8 +123,8 @@ public final class ZipkinSpanExporterSender extends Sender {
     }
 
     /**
-     * Use this to change the encoding used in messages. Default is {@linkplain Encoding#JSON}
-     * This also controls the "Content-Type" header when sending spans.
+     * Use this to change the encoding used in messages. Default is {@linkplain Encoding#JSON} This
+     * also controls the "Content-Type" header when sending spans.
      *
      * <p>Note: If ultimately sending to Zipkin, version 2.8+ is required to process protobuf.
      */
@@ -120,17 +137,16 @@ public final class ZipkinSpanExporterSender extends Sender {
     public final ZipkinSpanExporterSender build() {
       return new ZipkinSpanExporterSender(this);
     }
-
-    Builder() {
-    }
   }
 
   final URL endpoint;
   final Encoding encoding;
   final String mediaType;
   final BytesMessageEncoder encoder;
+  final String token;
   final int messageMaxBytes;
-  final int connectTimeout, readTimeout;
+  final int connectTimeout;
+  final int readTimeout;
   final boolean compressionEnabled;
 
   ZipkinSpanExporterSender(Builder builder) {
@@ -141,10 +157,6 @@ public final class ZipkinSpanExporterSender extends Sender {
       case JSON:
         this.mediaType = "application/json";
         this.encoder = BytesMessageEncoder.JSON;
-        break;
-      case THRIFT:
-        this.mediaType = "application/x-thrift";
-        this.encoder = BytesMessageEncoder.THRIFT;
         break;
       case PROTO3:
         this.mediaType = "application/x-protobuf";
@@ -157,6 +169,7 @@ public final class ZipkinSpanExporterSender extends Sender {
     this.connectTimeout = builder.connectTimeout;
     this.readTimeout = builder.readTimeout;
     this.compressionEnabled = builder.compressionEnabled;
+    this.token = builder.token;
   }
 
   public Builder toBuilder() {
@@ -166,30 +179,36 @@ public final class ZipkinSpanExporterSender extends Sender {
   /** close is typically called from a different thread */
   volatile boolean closeCalled;
 
-  @Override public int messageSizeInBytes(List<byte[]> encodedSpans) {
+  @Override
+  public int messageSizeInBytes(List<byte[]> encodedSpans) {
     return encoding().listSizeInBytes(encodedSpans);
   }
 
-  @Override public int messageSizeInBytes(int encodedSizeInBytes) {
+  @Override
+  public int messageSizeInBytes(int encodedSizeInBytes) {
     return encoding().listSizeInBytes(encodedSizeInBytes);
   }
 
-  @Override public Encoding encoding() {
+  @Override
+  public Encoding encoding() {
     return encoding;
   }
 
-  @Override public int messageMaxBytes() {
+  @Override
+  public int messageMaxBytes() {
     return messageMaxBytes;
   }
 
   /** The returned call sends spans as a POST to {@link Builder#endpoint}. */
-  @Override public Call<Void> sendSpans(List<byte[]> encodedSpans) {
+  @Override
+  public Call<Void> sendSpans(List<byte[]> encodedSpans) {
     if (closeCalled) throw new ClosedSenderException();
     return new HttpPostCall(encoder.encode(encodedSpans));
   }
 
   /** Sends an empty json message to the configured endpoint. */
-  @Override public CheckResult check() {
+  @Override
+  public CheckResult check() {
     try {
       send(new byte[] {'[', ']'}, "application/json");
       return CheckResult.OK;
@@ -199,7 +218,8 @@ public final class ZipkinSpanExporterSender extends Sender {
     }
   }
 
-  @Override public void close() {
+  @Override
+  public void close() {
     closeCalled = true;
   }
 
@@ -210,6 +230,9 @@ public final class ZipkinSpanExporterSender extends Sender {
     connection.setReadTimeout(readTimeout);
     connection.setRequestMethod("POST");
     connection.addRequestProperty("Content-Type", mediaType);
+    if(!token.isEmpty()) {
+      connection.addRequestProperty("Authorization", token);
+    }
     if (compressionEnabled) {
       connection.addRequestProperty("Content-Encoding", "gzip");
       ByteArrayOutputStream gzipped = new ByteArrayOutputStream();
@@ -238,6 +261,7 @@ public final class ZipkinSpanExporterSender extends Sender {
     throw thrown;
   }
 
+  @Nullable
   static IOException skipAndSuppress(InputStream in) {
     try {
       while (in.read() != -1) ; // skip
@@ -252,7 +276,8 @@ public final class ZipkinSpanExporterSender extends Sender {
     }
   }
 
-  @Override public final String toString() {
+  @Override
+  public final String toString() {
     return "URLConnectionSender{" + endpoint + "}";
   }
 
@@ -263,12 +288,14 @@ public final class ZipkinSpanExporterSender extends Sender {
       this.message = message;
     }
 
-    @Override protected Void doExecute() throws IOException {
+    @Override
+    protected Void doExecute() throws IOException {
       send(message, mediaType);
       return null;
     }
 
-    @Override protected void doEnqueue(Callback<Void> callback) {
+    @Override
+    protected void doEnqueue(Callback<Void> callback) {
       try {
         send(message, mediaType);
         callback.onSuccess(null);
@@ -277,7 +304,8 @@ public final class ZipkinSpanExporterSender extends Sender {
       }
     }
 
-    @Override public Call<Void> clone() {
+    @Override
+    public Call<Void> clone() {
       return new HttpPostCall(message);
     }
   }
