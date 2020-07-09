@@ -83,10 +83,11 @@ public final class ZipkinSpanExporter implements SpanExporter {
   static final String STATUS_ERROR = "error";
 
   private final BytesEncoder<Span> encoder;
-  private final Sender sender;
+  private final ZipkinSpanExporterSender sender;
   private final Endpoint localEndpoint;
 
-  ZipkinSpanExporter(BytesEncoder<Span> encoder, Sender sender, String serviceName) {
+  ZipkinSpanExporter(
+      BytesEncoder<Span> encoder, ZipkinSpanExporterSender sender, String serviceName) {
     this.encoder = encoder;
     this.sender = sender;
     this.localEndpoint = produceLocalEndpoint(serviceName);
@@ -263,11 +264,15 @@ public final class ZipkinSpanExporter implements SpanExporter {
 
   @Override
   public void shutdown() {
-    try {
-      sender.close();
-    } catch (IOException e) {
-      logger.log(Level.WARNING, "Exception while closing the Zipkin Sender instance", e);
-    }
+    sender.close();
+  }
+
+  public void restartConnection() {
+    sender.closeCalled = false;
+  }
+
+  public void setRefreshedToken(String token) {
+    sender.token = token;
   }
 
   /**
@@ -285,7 +290,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
     private static final String KEY_ENDPOINT = "otel.zipkin.endpoint";
 
     private BytesEncoder<Span> encoder = SpanBytesEncoder.JSON_V2;
-    private Sender sender;
+    private ZipkinSpanExporterSender sender;
     private String serviceName;
     private String token = "";
 
@@ -324,7 +329,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @return this.
      * @since 0.4.0
      */
-    public Builder setSender(Sender sender) {
+    public Builder setSender(ZipkinSpanExporterSender sender) {
       this.sender = sender;
       return this;
     }

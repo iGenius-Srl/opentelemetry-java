@@ -77,7 +77,9 @@ public final class ZipkinSpanExporterSender extends Sender {
      */
     // customizable so that users can re-map /api/v2/spans ex for browser-originated traces
     public final Builder endpoint(String endpoint) {
-      if (endpoint == null) throw new NullPointerException("endpoint == null");
+      if (endpoint == null) {
+        throw new NullPointerException("endpoint == null");
+      }
 
       try {
         return endpoint(new URL(endpoint));
@@ -87,7 +89,9 @@ public final class ZipkinSpanExporterSender extends Sender {
     }
 
     public Builder endpoint(URL endpoint) {
-      if (endpoint == null) throw new NullPointerException("endpoint == null");
+      if (endpoint == null) {
+        throw new NullPointerException("endpoint == null");
+      }
       this.endpoint = endpoint;
       return this;
     }
@@ -129,7 +133,9 @@ public final class ZipkinSpanExporterSender extends Sender {
      * <p>Note: If ultimately sending to Zipkin, version 2.8+ is required to process protobuf.
      */
     public Builder encoding(Encoding encoding) {
-      if (encoding == null) throw new NullPointerException("encoding == null");
+      if (encoding == null) {
+        throw new NullPointerException("encoding == null");
+      }
       this.encoding = encoding;
       return this;
     }
@@ -143,14 +149,17 @@ public final class ZipkinSpanExporterSender extends Sender {
   final Encoding encoding;
   final String mediaType;
   final BytesMessageEncoder encoder;
-  final String token;
   final int messageMaxBytes;
   final int connectTimeout;
   final int readTimeout;
   final boolean compressionEnabled;
+  // token will be dynamic
+  public String token;
 
   ZipkinSpanExporterSender(Builder builder) {
-    if (builder.endpoint == null) throw new NullPointerException("endpoint == null");
+    if (builder.endpoint == null) {
+      throw new NullPointerException("endpoint == null");
+    }
     this.endpoint = builder.endpoint;
     this.encoding = builder.encoding;
     switch (builder.encoding) {
@@ -202,7 +211,9 @@ public final class ZipkinSpanExporterSender extends Sender {
   /** The returned call sends spans as a POST to {@link Builder#endpoint}. */
   @Override
   public Call<Void> sendSpans(List<byte[]> encodedSpans) {
-    if (closeCalled) throw new ClosedSenderException();
+    if (closeCalled) {
+      throw new ClosedSenderException();
+    }
     return new HttpPostCall(encoder.encode(encodedSpans));
   }
 
@@ -221,6 +232,14 @@ public final class ZipkinSpanExporterSender extends Sender {
   @Override
   public void close() {
     closeCalled = true;
+  }
+
+  public void restartConnection() {
+    closeCalled = false;
+  }
+
+  public void setRefreshedToken(String token) {
+    this.token = token;
   }
 
   void send(byte[] body, String mediaType) throws IOException {
@@ -255,16 +274,21 @@ public final class ZipkinSpanExporterSender extends Sender {
   static void skipAllContent(HttpURLConnection connection) throws IOException {
     InputStream in = connection.getInputStream();
     IOException thrown = skipAndSuppress(in);
-    if (thrown == null) return;
+    if (thrown == null) {
+      return;
+    }
     InputStream err = connection.getErrorStream();
-    if (err != null) skipAndSuppress(err); // null is possible, if the connection was dropped
+    if (err != null) {
+      skipAndSuppress(err); // null is possible, if the connection was dropped
+    }
     throw thrown;
   }
 
   @Nullable
   static IOException skipAndSuppress(InputStream in) {
     try {
-      while (in.read() != -1) ; // skip
+      while (in.read() != -1) {; // skip
+      }
       return null;
     } catch (IOException e) {
       return e;
