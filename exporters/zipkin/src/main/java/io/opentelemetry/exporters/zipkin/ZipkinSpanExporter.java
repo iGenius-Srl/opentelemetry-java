@@ -19,6 +19,7 @@ package io.opentelemetry.exporters.zipkin;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 import io.opentelemetry.common.AttributeValue;
+import io.opentelemetry.common.AttributeValue.Type;
 import io.opentelemetry.common.ReadableAttributes;
 import io.opentelemetry.common.ReadableKeyValuePairs.KeyValueConsumer;
 import io.opentelemetry.sdk.common.export.ConfigBuilder;
@@ -82,10 +83,11 @@ public final class ZipkinSpanExporter implements SpanExporter {
   static final String STATUS_ERROR = "error";
 
   private final BytesEncoder<Span> encoder;
-  private final Sender sender;
+  private final ZipkinSpanExporterSender sender;
   private final Endpoint localEndpoint;
 
-  ZipkinSpanExporter(BytesEncoder<Span> encoder, Sender sender, String serviceName) {
+  ZipkinSpanExporter(
+      BytesEncoder<Span> encoder, ZipkinSpanExporterSender sender, String serviceName) {
     this.encoder = encoder;
     this.sender = sender;
     this.localEndpoint = produceLocalEndpoint(serviceName);
@@ -96,6 +98,9 @@ public final class ZipkinSpanExporter implements SpanExporter {
     Endpoint.Builder builder = Endpoint.newBuilder().serviceName(serviceName);
     try {
       Enumeration<NetworkInterface> nics = NetworkInterface.getNetworkInterfaces();
+      if (nics == null) {
+        return builder.build();
+      }
       while (nics.hasMoreElements()) {
         NetworkInterface nic = nics.nextElement();
         Enumeration<InetAddress> addresses = nic.getInetAddresses();
@@ -204,7 +209,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
   }
 
   private static String attributeValueToString(AttributeValue attributeValue) {
-    AttributeValue.Type type = attributeValue.getType();
+    Type type = attributeValue.getType();
     switch (type) {
       case STRING:
         return attributeValue.getStringValue();
@@ -259,11 +264,15 @@ public final class ZipkinSpanExporter implements SpanExporter {
 
   @Override
   public void shutdown() {
-    try {
-      sender.close();
-    } catch (IOException e) {
-      logger.log(Level.WARNING, "Exception while closing the Zipkin Sender instance", e);
-    }
+    sender.close();
+  }
+
+  public void restartConnection() {
+    sender.closeCalled = false;
+  }
+
+  public void setRefreshedToken(String token) {
+    sender.token = token;
   }
 
   /**
@@ -281,8 +290,9 @@ public final class ZipkinSpanExporter implements SpanExporter {
     private static final String KEY_ENDPOINT = "otel.zipkin.endpoint";
 
     private BytesEncoder<Span> encoder = SpanBytesEncoder.JSON_V2;
-    private Sender sender;
+    private ZipkinSpanExporterSender sender;
     private String serviceName;
+    private String token = "";
 
     /**
      * Label of the remote node in the service graph, such as "favstar". Avoid names with variables
@@ -319,7 +329,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @return this.
      * @since 0.4.0
      */
-    public Builder setSender(Sender sender) {
+    public Builder setSender(ZipkinSpanExporterSender sender) {
       this.sender = sender;
       return this;
     }
@@ -338,6 +348,11 @@ public final class ZipkinSpanExporter implements SpanExporter {
       return this;
     }
 
+    public Builder setAuthToken(String token) {
+      this.token = token;
+      return this;
+    }
+
     /**
      * Sets the zipkin endpoint. This will use the endpoint to assign a {@link URLConnectionSender}
      * instance to this builder.
@@ -348,7 +363,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @since 0.4.0
      */
     public Builder setEndpoint(String endpoint) {
-      setSender(URLConnectionSender.create(endpoint));
+      setSender(ZipkinSpanExporterSender.create(endpoint, token));
       return this;
     }
 
