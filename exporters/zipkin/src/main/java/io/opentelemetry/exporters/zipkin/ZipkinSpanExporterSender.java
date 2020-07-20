@@ -250,7 +250,7 @@ public final class ZipkinSpanExporterSender extends Sender {
     connection.setRequestMethod("POST");
     connection.addRequestProperty("Content-Type", mediaType);
     if (!token.isEmpty()) {
-      connection.addRequestProperty("Authorization", token);
+      connection.addRequestProperty("Authorization","Bearer ".concat(token));
     }
     if (compressionEnabled) {
       connection.addRequestProperty("Content-Encoding", "gzip");
