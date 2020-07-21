@@ -249,7 +249,7 @@ public final class ZipkinSpanExporterSender extends Sender {
     connection.setReadTimeout(readTimeout);
     connection.setRequestMethod("POST");
     connection.addRequestProperty("Content-Type", mediaType);
-    if (!token.isEmpty()) {
+    if (token != null && !token.isEmpty()) {
       connection.addRequestProperty("Authorization", "Bearer ".concat(token));
     }
     if (compressionEnabled) {
@@ -296,6 +296,7 @@ public final class ZipkinSpanExporterSender extends Sender {
       try {
         in.close();
       } catch (IOException suppressed) {
+        System.out.println(suppressed.getMessage());
       }
     }
   }

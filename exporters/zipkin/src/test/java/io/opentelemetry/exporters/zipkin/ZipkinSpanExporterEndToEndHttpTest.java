@@ -41,7 +41,6 @@ import zipkin2.Span;
 import zipkin2.codec.Encoding;
 import zipkin2.codec.SpanBytesEncoder;
 import zipkin2.junit.ZipkinRule;
-import zipkin2.reporter.urlconnection.URLConnectionSender;
 
 /**
  * Tests which use Zipkin's {@link ZipkinRule} to verify that the {@link ZipkinSpanExporter} can
@@ -94,16 +93,6 @@ public class ZipkinSpanExporterEndToEndHttpTest {
   }
 
   @Test
-  public void testExportAsThrift() {
-
-    @SuppressWarnings("deprecation") // we have to use the deprecated thrift encoding to test it
-    ZipkinSpanExporter exporter =
-        buildZipkinExporter(
-            zipkin.httpUrl() + ENDPOINT_V1_SPANS, Encoding.THRIFT, SpanBytesEncoder.THRIFT);
-    exportAndVerify(exporter);
-  }
-
-  @Test
   public void testExportAsJsonV1() {
     ZipkinSpanExporter exporter =
         buildZipkinExporter(
@@ -129,7 +118,8 @@ public class ZipkinSpanExporterEndToEndHttpTest {
   private static ZipkinSpanExporter buildZipkinExporter(
       String endpoint, Encoding encoding, SpanBytesEncoder encoder) {
     return ZipkinSpanExporter.newBuilder()
-        .setSender(URLConnectionSender.newBuilder().endpoint(endpoint).encoding(encoding).build())
+        .setSender(
+            ZipkinSpanExporterSender.newBuilder().endpoint(endpoint).encoding(encoding).build())
         .setServiceName(SERVICE_NAME)
         .setEncoder(encoder)
         .build();

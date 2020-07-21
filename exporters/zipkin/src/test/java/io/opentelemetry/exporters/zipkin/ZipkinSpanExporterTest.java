@@ -52,13 +52,12 @@ import zipkin2.Call;
 import zipkin2.Endpoint;
 import zipkin2.Span;
 import zipkin2.codec.SpanBytesEncoder;
-import zipkin2.reporter.Sender;
 
 /** Unit tests for {@link ZipkinSpanExporterTest}. */
 @RunWith(MockitoJUnitRunner.class)
 public class ZipkinSpanExporterTest {
 
-  @Mock private Sender mockSender;
+  @Mock private ZipkinSpanExporterSender mockSender;
   @Mock private SpanBytesEncoder mockEncoder;
   @Mock private Call<Void> mockZipkinCall;
 
