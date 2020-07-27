@@ -145,7 +145,6 @@ public final class ZipkinSpanExporterSender extends Sender {
     }
   }
 
-  final URL endpoint;
   final Encoding encoding;
   final String mediaType;
   final BytesMessageEncoder encoder;
@@ -155,6 +154,7 @@ public final class ZipkinSpanExporterSender extends Sender {
   final boolean compressionEnabled;
   // token will be dynamic
   public String token;
+  public URL endpoint;
 
   ZipkinSpanExporterSender(Builder builder) {
     if (builder.endpoint == null) {

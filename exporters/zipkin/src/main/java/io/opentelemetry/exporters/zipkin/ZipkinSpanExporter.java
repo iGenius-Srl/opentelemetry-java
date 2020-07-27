@@ -31,7 +31,9 @@ import io.opentelemetry.trace.Status;
 import io.opentelemetry.trace.attributes.SemanticAttributes;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.MalformedURLException;
 import java.net.NetworkInterface;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
@@ -272,6 +274,17 @@ public final class ZipkinSpanExporter implements SpanExporter {
 
   public void setRefreshedToken(String token) {
     sender.token = token;
+  }
+
+  public void setEndPoint(String endpoint) {
+    if (endpoint == null) {
+      throw new NullPointerException("endpoint == null");
+    }
+    try {
+      sender.endpoint = new URL(endpoint);
+    } catch (MalformedURLException e) {
+      throw new IllegalArgumentException(e.getMessage());
+    }
   }
 
   /**
