@@ -21,8 +21,10 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import io.opentelemetry.common.AttributeValue;
 import io.opentelemetry.common.ReadableAttributes;
 import io.opentelemetry.common.ReadableKeyValuePairs.KeyValueConsumer;
+import io.opentelemetry.sdk.common.CompletableResultCode;
+import io.opentelemetry.sdk.common.InstrumentationLibraryInfo;
 import io.opentelemetry.sdk.common.export.ConfigBuilder;
-import io.opentelemetry.sdk.resources.ResourceConstants;
+import io.opentelemetry.sdk.resources.ResourceAttributes;
 import io.opentelemetry.sdk.trace.data.SpanData;
 import io.opentelemetry.sdk.trace.data.SpanData.Event;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
@@ -31,9 +33,7 @@ import io.opentelemetry.trace.Status;
 import io.opentelemetry.trace.attributes.SemanticAttributes;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.net.MalformedURLException;
 import java.net.NetworkInterface;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
@@ -42,12 +42,13 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.Nullable;
+import zipkin2.Callback;
 import zipkin2.Endpoint;
 import zipkin2.Span;
 import zipkin2.codec.BytesEncoder;
 import zipkin2.codec.SpanBytesEncoder;
 import zipkin2.reporter.Sender;
-import zipkin2.reporter.urlconnection.URLConnectionSender;
+import zipkin2.reporter.okhttp3.OkHttpSender;
 
 /**
  * This class was based on the OpenCensus zipkin exporter code at
@@ -72,6 +73,8 @@ import zipkin2.reporter.urlconnection.URLConnectionSender;
  * </ul>
  */
 public final class ZipkinSpanExporter implements SpanExporter {
+  public static final String DEFAULT_ENDPOINT = "http://localhost:9411/api/v2/spans";
+  public static final String DEFAULT_SERVICE_NAME = "unknown";
 
   private static final Logger logger = Logger.getLogger(ZipkinSpanExporter.class.getName());
 
@@ -83,12 +86,14 @@ public final class ZipkinSpanExporter implements SpanExporter {
   static final String GRPC_STATUS_DESCRIPTION = "grpc.status_description";
   static final String STATUS_ERROR = "error";
 
+  static final String KEY_INSTRUMENTATION_LIBRARY_NAME = "otel.instrumentation_library.name";
+  static final String KEY_INSTRUMENTATION_LIBRARY_VERSION = "otel.instrumentation_library.version";
+
   private final BytesEncoder<Span> encoder;
-  private final ZipkinSpanExporterSender sender;
+  private final Sender sender;
   private final Endpoint localEndpoint;
 
-  ZipkinSpanExporter(
-      BytesEncoder<Span> encoder, ZipkinSpanExporterSender sender, String serviceName) {
+  ZipkinSpanExporter(BytesEncoder<Span> encoder, Sender sender, String serviceName) {
     this.encoder = encoder;
     this.sender = sender;
     this.localEndpoint = produceLocalEndpoint(serviceName);
@@ -99,9 +104,6 @@ public final class ZipkinSpanExporter implements SpanExporter {
     Endpoint.Builder builder = Endpoint.newBuilder().serviceName(serviceName);
     try {
       Enumeration<NetworkInterface> nics = NetworkInterface.getNetworkInterfaces();
-      if (nics == null) {
-        return builder.build();
-      }
       while (nics.hasMoreElements()) {
         NetworkInterface nic = nics.nextElement();
         Enumeration<InetAddress> addresses = nic.getInetAddresses();
@@ -164,6 +166,17 @@ public final class ZipkinSpanExporter implements SpanExporter {
       spanBuilder.putTag(STATUS_ERROR, status.getCanonicalCode().toString());
     }
 
+    InstrumentationLibraryInfo instrumentationLibraryInfo =
+        spanData.getInstrumentationLibraryInfo();
+
+    if (!instrumentationLibraryInfo.getName().isEmpty()) {
+      spanBuilder.putTag(KEY_INSTRUMENTATION_LIBRARY_NAME, instrumentationLibraryInfo.getName());
+    }
+    if (instrumentationLibraryInfo.getVersion() != null) {
+      spanBuilder.putTag(
+          KEY_INSTRUMENTATION_LIBRARY_VERSION, instrumentationLibraryInfo.getVersion());
+    }
+
     for (Event annotation : spanData.getEvents()) {
       spanBuilder.addAnnotation(toEpochMicros(annotation.getEpochNanos()), annotation.getName());
     }
@@ -175,7 +188,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
     ReadableAttributes resourceAttributes = spanData.getResource().getAttributes();
 
     // use the service.name from the Resource, if it's been set.
-    AttributeValue serviceNameValue = resourceAttributes.get(ResourceConstants.SERVICE_NAME);
+    AttributeValue serviceNameValue = resourceAttributes.get(ResourceAttributes.SERVICE_NAME.key());
     if (serviceNameValue == null) {
       return localEndpoint;
     }
@@ -244,47 +257,45 @@ public final class ZipkinSpanExporter implements SpanExporter {
   }
 
   @Override
-  public ResultCode export(final Collection<SpanData> spanDataList) {
+  public CompletableResultCode export(final Collection<SpanData> spanDataList) {
     List<byte[]> encodedSpans = new ArrayList<>(spanDataList.size());
     for (SpanData spanData : spanDataList) {
       encodedSpans.add(encoder.encode(generateSpan(spanData, localEndpoint)));
     }
-    try {
-      sender.sendSpans(encodedSpans).execute();
-    } catch (IOException e) {
-      return ResultCode.FAILURE;
-    }
-    return ResultCode.SUCCESS;
+
+    final CompletableResultCode result = new CompletableResultCode();
+    sender
+        .sendSpans(encodedSpans)
+        .enqueue(
+            new Callback<Void>() {
+              @Override
+              public void onSuccess(Void value) {
+                result.succeed();
+              }
+
+              @Override
+              public void onError(Throwable t) {
+                logger.log(Level.WARNING, "Failed to export spans", t);
+                result.fail();
+              }
+            });
+    return result;
   }
 
   @Override
-  public ResultCode flush() {
+  public CompletableResultCode flush() {
     // nothing required here
-    return ResultCode.SUCCESS;
+    return CompletableResultCode.ofSuccess();
   }
 
   @Override
-  public void shutdown() {
-    sender.close();
-  }
-
-  public void restartConnection() {
-    sender.closeCalled = false;
-  }
-
-  public void setRefreshedToken(String token) {
-    sender.token = token;
-  }
-
-  public void setEndPoint(String endpoint) {
-    if (endpoint == null) {
-      throw new NullPointerException("endpoint == null");
-    }
+  public CompletableResultCode shutdown() {
     try {
-      sender.endpoint = new URL(endpoint);
-    } catch (MalformedURLException e) {
-      throw new IllegalArgumentException(e.getMessage());
+      sender.close();
+    } catch (IOException e) {
+      logger.log(Level.WARNING, "Exception while closing the Zipkin Sender instance", e);
     }
+    return CompletableResultCode.ofSuccess();
   }
 
   /**
@@ -300,11 +311,10 @@ public final class ZipkinSpanExporter implements SpanExporter {
   public static final class Builder extends ConfigBuilder<Builder> {
     private static final String KEY_SERVICE_NAME = "otel.zipkin.service.name";
     private static final String KEY_ENDPOINT = "otel.zipkin.endpoint";
-
     private BytesEncoder<Span> encoder = SpanBytesEncoder.JSON_V2;
-    private ZipkinSpanExporterSender sender;
-    private String serviceName;
-    private String token = "";
+    private Sender sender;
+    private String serviceName = DEFAULT_SERVICE_NAME;
+    private String endpoint = DEFAULT_ENDPOINT;
 
     /**
      * Label of the remote node in the service graph, such as "favstar". Avoid names with variables
@@ -314,7 +324,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * consistent. Many use a name from service discovery.
      *
      * <p>Note: this value, will be superseded by the value of {@link
-     * io.opentelemetry.sdk.resources.ResourceConstants#SERVICE_NAME} if it has been set in the
+     * io.opentelemetry.sdk.resources.ResourceAttributes#SERVICE_NAME} if it has been set in the
      * {@link io.opentelemetry.sdk.resources.Resource} associated with the Tracer that created the
      * spans.
      *
@@ -323,7 +333,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @param serviceName The service name. It defaults to "unknown".
      * @return this.
      * @see io.opentelemetry.sdk.resources.Resource
-     * @see io.opentelemetry.sdk.resources.ResourceConstants
+     * @see io.opentelemetry.sdk.resources.ResourceAttributes
      * @since 0.4.0
      */
     public Builder setServiceName(String serviceName) {
@@ -333,7 +343,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
 
     /**
      * Sets the Zipkin sender. Implements the client side of the span transport. A {@link
-     * URLConnectionSender} is a good default.
+     * OkHttpSender} is a good default.
      *
      * <p>The {@link Sender#close()} method will be called when the exporter is shut down.
      *
@@ -341,7 +351,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @return this.
      * @since 0.4.0
      */
-    public Builder setSender(ZipkinSpanExporterSender sender) {
+    public Builder setSender(Sender sender) {
       this.sender = sender;
       return this;
     }
@@ -360,22 +370,17 @@ public final class ZipkinSpanExporter implements SpanExporter {
       return this;
     }
 
-    public Builder setAuthToken(String token) {
-      this.token = token;
-      return this;
-    }
-
     /**
-     * Sets the zipkin endpoint. This will use the endpoint to assign a {@link URLConnectionSender}
+     * Sets the zipkin endpoint. This will use the endpoint to assign a {@link OkHttpSender}
      * instance to this builder.
      *
      * @param endpoint The Zipkin endpoint URL, ex. "http://zipkinhost:9411/api/v2/spans".
      * @return this.
-     * @see URLConnectionSender
+     * @see OkHttpSender
      * @since 0.4.0
      */
     public Builder setEndpoint(String endpoint) {
-      setSender(ZipkinSpanExporterSender.create(endpoint, token));
+      this.endpoint = endpoint;
       return this;
     }
 
@@ -407,6 +412,9 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @since 0.4.0
      */
     public ZipkinSpanExporter build() {
+      if (sender == null) {
+        sender = OkHttpSender.create(endpoint);
+      }
       return new ZipkinSpanExporter(this.encoder, this.sender, this.serviceName);
     }
   }

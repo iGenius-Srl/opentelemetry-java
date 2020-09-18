@@ -24,6 +24,7 @@ import static io.opentelemetry.common.AttributeValue.stringAttributeValue;
 
 import com.google.auto.value.AutoValue;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import javax.annotation.concurrent.Immutable;
 
@@ -44,6 +45,11 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
 
     @Override
     abstract List<Object> data();
+
+    @Override
+    public Builder toBuilder() {
+      return new Builder(new ArrayList<>(data()));
+    }
   }
 
   /** Returns a {@link Attributes} instance with no attributes. */
@@ -122,17 +128,41 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
     return new AutoValue_Attributes_ArrayBackedAttributes(sortAndFilter(data));
   }
 
-  /** Creates a new {@link Builder} instance for creating arbitrary {@link Attributes}. */
+  /** Returns a new {@link Builder} instance for creating arbitrary {@link Attributes}. */
   public static Builder newBuilder() {
     return new Builder();
   }
+
+  /** Returns a new {@link Builder} instance from ReadableAttributes. */
+  public static Builder newBuilder(ReadableAttributes attributes) {
+    final Builder builder = new Builder();
+    attributes.forEach(
+        new KeyValueConsumer<AttributeValue>() {
+          @Override
+          public void consume(String key, AttributeValue value) {
+            builder.setAttribute(key, value);
+          }
+        });
+    return builder;
+  }
+
+  /** Returns a new {@link Builder} instance populated with the data of this {@link Attributes}. */
+  public abstract Builder toBuilder();
 
   /**
    * Enables the creation of an {@link Attributes} instance with an arbitrary number of key-value
    * pairs.
    */
   public static class Builder {
-    private final List<Object> data = new ArrayList<>();
+    private final List<Object> data;
+
+    private Builder() {
+      data = new ArrayList<>();
+    }
+
+    private Builder(List<Object> data) {
+      this.data = data;
+    }
 
     /** Create the {@link Attributes} from this. */
     public Attributes build() {
@@ -145,6 +175,26 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
      * @return this Builder
      */
     public Builder setAttribute(String key, AttributeValue value) {
+      if (key == null || key.length() == 0) {
+        return this;
+      }
+      if (value == null || value.isNull()) {
+        // Remove key/value pairs
+        Iterator<Object> itr = data.iterator();
+        while (itr.hasNext()) {
+          String k = (String) itr.next();
+          if (key.equals(k)) {
+            // delete key and value
+            itr.remove();
+            itr.next();
+            itr.remove();
+          } else {
+            // skip the value part
+            itr.next();
+          }
+        }
+        return this;
+      }
       data.add(key);
       data.add(value);
       return this;
@@ -156,9 +206,8 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
      * @return this Builder
      */
     public Builder setAttribute(String key, String value) {
-      data.add(key);
-      data.add(stringAttributeValue(value));
-      return this;
+      AttributeValue v = stringAttributeValue(value);
+      return setAttribute(key, v);
     }
 
     /**
@@ -167,9 +216,8 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
      * @return this Builder
      */
     public Builder setAttribute(String key, long value) {
-      data.add(key);
-      data.add(longAttributeValue(value));
-      return this;
+      AttributeValue v = longAttributeValue(value);
+      return setAttribute(key, v);
     }
 
     /**
@@ -178,9 +226,8 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
      * @return this Builder
      */
     public Builder setAttribute(String key, double value) {
-      data.add(key);
-      data.add(doubleAttributeValue(value));
-      return this;
+      AttributeValue v = doubleAttributeValue(value);
+      return setAttribute(key, v);
     }
 
     /**
@@ -189,9 +236,8 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
      * @return this Builder
      */
     public Builder setAttribute(String key, boolean value) {
-      data.add(key);
-      data.add(booleanAttributeValue(value));
-      return this;
+      AttributeValue v = booleanAttributeValue(value);
+      return setAttribute(key, v);
     }
 
     /**
@@ -200,9 +246,8 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
      * @return this Builder
      */
     public Builder setAttribute(String key, String... value) {
-      data.add(key);
-      data.add(arrayAttributeValue(value));
-      return this;
+      AttributeValue v = arrayAttributeValue(value);
+      return setAttribute(key, v);
     }
 
     /**
@@ -211,9 +256,8 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
      * @return this Builder
      */
     public Builder setAttribute(String key, Long... value) {
-      data.add(key);
-      data.add(arrayAttributeValue(value));
-      return this;
+      AttributeValue v = arrayAttributeValue(value);
+      return setAttribute(key, v);
     }
 
     /**
@@ -222,9 +266,8 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
      * @return this Builder
      */
     public Builder setAttribute(String key, Double... value) {
-      data.add(key);
-      data.add(arrayAttributeValue(value));
-      return this;
+      AttributeValue v = arrayAttributeValue(value);
+      return setAttribute(key, v);
     }
 
     /**
@@ -233,9 +276,8 @@ public abstract class Attributes extends ImmutableKeyValuePairs<AttributeValue>
      * @return this Builder
      */
     public Builder setAttribute(String key, Boolean... value) {
-      data.add(key);
-      data.add(arrayAttributeValue(value));
-      return this;
+      AttributeValue v = arrayAttributeValue(value);
+      return setAttribute(key, v);
     }
   }
 }

@@ -17,7 +17,7 @@
 package io.opentelemetry.extensions.trace.propagation;
 
 import io.grpc.Context;
-import io.opentelemetry.context.propagation.HttpTextFormat;
+import io.opentelemetry.context.propagation.TextMapPropagator;
 import io.opentelemetry.trace.Span;
 import io.opentelemetry.trace.SpanContext;
 import io.opentelemetry.trace.TracingContextUtils;
@@ -27,7 +27,7 @@ import javax.annotation.concurrent.Immutable;
 @Immutable
 final class B3PropagatorInjectorMultipleHeaders implements B3PropagatorInjector {
   @Override
-  public <C> void inject(Context context, C carrier, HttpTextFormat.Setter<C> setter) {
+  public <C> void inject(Context context, C carrier, TextMapPropagator.Setter<C> setter) {
     Objects.requireNonNull(context, "context");
     Objects.requireNonNull(setter, "setter");
 
@@ -37,8 +37,7 @@ final class B3PropagatorInjectorMultipleHeaders implements B3PropagatorInjector 
     }
 
     SpanContext spanContext = span.getContext();
-    String sampled =
-        spanContext.getTraceFlags().isSampled() ? B3Propagator.TRUE_INT : B3Propagator.FALSE_INT;
+    String sampled = spanContext.getTraceFlags().isSampled() ? Common.TRUE_INT : Common.FALSE_INT;
 
     setter.set(carrier, B3Propagator.TRACE_ID_HEADER, spanContext.getTraceId().toLowerBase16());
     setter.set(carrier, B3Propagator.SPAN_ID_HEADER, spanContext.getSpanId().toLowerBase16());

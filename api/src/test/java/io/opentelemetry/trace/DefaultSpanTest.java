@@ -16,39 +16,25 @@
 
 package io.opentelemetry.trace;
 
-import static com.google.common.truth.Truth.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import io.opentelemetry.common.AttributeValue;
 import io.opentelemetry.common.Attributes;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.jupiter.api.Test;
 
 /** Unit tests for {@link DefaultSpan}. */
-@RunWith(JUnit4.class)
-public class DefaultSpanTest {
-  @Rule public final ExpectedException thrown = ExpectedException.none();
+class DefaultSpanTest {
 
   @Test
-  public void hasInvalidContextAndDefaultSpanOptions() {
-    SpanContext context = DefaultSpan.createRandom().getContext();
+  void hasInvalidContextAndDefaultSpanOptions() {
+    SpanContext context = DefaultSpan.getInvalid().getContext();
     assertThat(context.getTraceFlags()).isEqualTo(TraceFlags.getDefault());
     assertThat(context.getTraceState()).isEqualTo(TraceState.getDefault());
   }
 
   @Test
-  public void hasUniqueTraceIdAndSpanId() {
-    DefaultSpan span1 = DefaultSpan.createRandom();
-    DefaultSpan span2 = DefaultSpan.createRandom();
-    assertThat(span1.getContext().getTraceId()).isNotEqualTo(span2.getContext().getTraceId());
-    assertThat(span1.getContext().getSpanId()).isNotEqualTo(span2.getContext().getSpanId());
-  }
-
-  @Test
-  public void doNotCrash() {
-    DefaultSpan span = DefaultSpan.createRandom();
+  void doNotCrash() {
+    Span span = DefaultSpan.getInvalid();
     span.setAttribute(
         "MyStringAttributeKey", AttributeValue.stringAttributeValue("MyStringAttributeValue"));
     span.setAttribute("MyBooleanAttributeKey", AttributeValue.booleanAttributeValue(true));
@@ -59,6 +45,7 @@ public class DefaultSpanTest {
     span.setAttribute("NullArrayBoolean", AttributeValue.arrayAttributeValue((Boolean[]) null));
     span.setAttribute("NullArrayLong", AttributeValue.arrayAttributeValue((Long[]) null));
     span.setAttribute("NullArrayDouble", AttributeValue.arrayAttributeValue((Double[]) null));
+    span.setAttribute(null, (String) null);
     span.addEvent("event");
     span.addEvent("event", 0);
     span.addEvent(
@@ -70,22 +57,19 @@ public class DefaultSpanTest {
         0);
     span.addEvent(new TestEvent());
     span.addEvent(new TestEvent(), 0);
+    span.addEvent((Event) null);
     span.setStatus(Status.OK);
+    span.recordException(new IllegalStateException());
+    span.recordException(new IllegalStateException(), Attributes.empty());
     span.end();
     span.end(EndSpanOptions.getDefault());
-  }
-
-  @Test
-  public void defaultSpan_ToString() {
-    DefaultSpan span = DefaultSpan.createRandom();
-    assertThat(span.toString()).isEqualTo("DefaultSpan");
-  }
-
-  @Test
-  public void defaultSpan_NullEndSpanOptions() {
-    DefaultSpan span = DefaultSpan.getInvalid();
-    thrown.expect(NullPointerException.class);
     span.end(null);
+  }
+
+  @Test
+  void defaultSpan_ToString() {
+    Span span = DefaultSpan.getInvalid();
+    assertThat(span.toString()).isEqualTo("DefaultSpan");
   }
 
   static final class TestEvent implements Event {

@@ -16,15 +16,16 @@
 
 package io.opentelemetry.exporters.otlp;
 
-import static com.google.common.truth.Truth.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.common.io.Closer;
 import io.grpc.ManagedChannel;
+import io.grpc.Server;
 import io.grpc.Status;
 import io.grpc.Status.Code;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
-import io.grpc.testing.GrpcCleanupRule;
 import io.opentelemetry.common.Labels;
 import io.opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest;
 import io.opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceResponse;
@@ -35,7 +36,6 @@ import io.opentelemetry.sdk.common.export.ConfigBuilder;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.metrics.data.MetricData.Descriptor;
 import io.opentelemetry.sdk.metrics.data.MetricData.LongPoint;
-import io.opentelemetry.sdk.metrics.export.MetricExporter.ResultCode;
 import io.opentelemetry.sdk.resources.Resource;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -44,17 +44,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-/** Unit tests for {@link OtlpGrpcMetricExporter}. */
-@RunWith(JUnit4.class)
-public class OtlpGrpcMetricExporterTest {
-  @Rule public final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
+class OtlpGrpcMetricExporterTest {
 
   private final FakeCollector fakeCollector = new FakeCollector();
   private final String serverName = InProcessServerBuilder.generateName();
@@ -67,19 +62,27 @@ public class OtlpGrpcMetricExporterTest {
     }
   }
 
-  @Before
+  private final Closer closer = Closer.create();
+
+  @BeforeEach
   public void setup() throws IOException {
-    grpcCleanup.register(
+    Server server =
         InProcessServerBuilder.forName(serverName)
             .directExecutor()
             .addService(fakeCollector)
             .build()
-            .start());
-    grpcCleanup.register(inProcessChannel);
+            .start();
+    closer.register(server::shutdownNow);
+    closer.register(inProcessChannel::shutdownNow);
+  }
+
+  @AfterEach
+  void tearDown() throws Exception {
+    closer.close();
   }
 
   @Test
-  public void configTest() {
+  void configTest() {
     Map<String, String> options = new HashMap<>();
     options.put("otel.otlp.metric.timeout", "12");
     OtlpGrpcMetricExporter.Builder config = OtlpGrpcMetricExporter.newBuilder();
@@ -89,12 +92,12 @@ public class OtlpGrpcMetricExporterTest {
   }
 
   @Test
-  public void testExport() {
+  void testExport() {
     MetricData span = generateFakeMetric();
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     try {
-      assertThat(exporter.export(Collections.singletonList(span))).isEqualTo(ResultCode.SUCCESS);
+      assertThat(exporter.export(Collections.singletonList(span)).isSuccess()).isTrue();
       assertThat(fakeCollector.getReceivedMetrics())
           .isEqualTo(MetricAdapter.toProtoResourceMetrics(Collections.singletonList(span)));
     } finally {
@@ -103,7 +106,7 @@ public class OtlpGrpcMetricExporterTest {
   }
 
   @Test
-  public void testExport_MultipleMetrics() {
+  void testExport_MultipleMetrics() {
     List<MetricData> spans = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
       spans.add(generateFakeMetric());
@@ -111,7 +114,7 @@ public class OtlpGrpcMetricExporterTest {
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     try {
-      assertThat(exporter.export(spans)).isEqualTo(ResultCode.SUCCESS);
+      assertThat(exporter.export(spans).isSuccess()).isTrue();
       assertThat(fakeCollector.getReceivedMetrics())
           .isEqualTo(MetricAdapter.toProtoResourceMetrics(spans));
     } finally {
@@ -120,111 +123,133 @@ public class OtlpGrpcMetricExporterTest {
   }
 
   @Test
-  public void testExport_AfterShutdown() {
+  void testExport_DeadlineSetPerExport() throws InterruptedException {
+    int deadlineMs = 500;
+    OtlpGrpcMetricExporter exporter =
+        OtlpGrpcMetricExporter.newBuilder()
+            .setChannel(inProcessChannel)
+            .setDeadlineMs(deadlineMs)
+            .build();
+
+    try {
+      TimeUnit.MILLISECONDS.sleep(2 * deadlineMs);
+      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())).isSuccess())
+          .isTrue();
+
+      TimeUnit.MILLISECONDS.sleep(2 * deadlineMs);
+      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())).isSuccess())
+          .isTrue();
+    } finally {
+      exporter.shutdown();
+    }
+  }
+
+  @Test
+  void testExport_AfterShutdown() {
     MetricData span = generateFakeMetric();
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     exporter.shutdown();
-    assertThat(exporter.export(Collections.singletonList(span))).isEqualTo(ResultCode.FAILURE);
+    assertThat(exporter.export(Collections.singletonList(span)).isSuccess()).isFalse();
   }
 
   @Test
-  public void testExport_Cancelled() {
+  void testExport_Cancelled() {
     fakeCollector.setReturnedStatus(Status.CANCELLED);
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     try {
-      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())))
-          .isEqualTo(ResultCode.FAILURE);
+      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())).isSuccess())
+          .isFalse();
     } finally {
       exporter.shutdown();
     }
   }
 
   @Test
-  public void testExport_DeadlineExceeded() {
+  void testExport_DeadlineExceeded() {
     fakeCollector.setReturnedStatus(Status.DEADLINE_EXCEEDED);
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     try {
-      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())))
-          .isEqualTo(ResultCode.FAILURE);
+      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())).isSuccess())
+          .isFalse();
     } finally {
       exporter.shutdown();
     }
   }
 
   @Test
-  public void testExport_ResourceExhausted() {
+  void testExport_ResourceExhausted() {
     fakeCollector.setReturnedStatus(Status.RESOURCE_EXHAUSTED);
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     try {
-      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())))
-          .isEqualTo(ResultCode.FAILURE);
+      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())).isSuccess())
+          .isFalse();
     } finally {
       exporter.shutdown();
     }
   }
 
   @Test
-  public void testExport_OutOfRange() {
+  void testExport_OutOfRange() {
     fakeCollector.setReturnedStatus(Status.OUT_OF_RANGE);
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     try {
-      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())))
-          .isEqualTo(ResultCode.FAILURE);
+      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())).isSuccess())
+          .isFalse();
     } finally {
       exporter.shutdown();
     }
   }
 
   @Test
-  public void testExport_Unavailable() {
+  void testExport_Unavailable() {
     fakeCollector.setReturnedStatus(Status.UNAVAILABLE);
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     try {
-      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())))
-          .isEqualTo(ResultCode.FAILURE);
+      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())).isSuccess())
+          .isFalse();
     } finally {
       exporter.shutdown();
     }
   }
 
   @Test
-  public void testExport_DataLoss() {
+  void testExport_DataLoss() {
     fakeCollector.setReturnedStatus(Status.DATA_LOSS);
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     try {
-      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())))
-          .isEqualTo(ResultCode.FAILURE);
+      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())).isSuccess())
+          .isFalse();
     } finally {
       exporter.shutdown();
     }
   }
 
   @Test
-  public void testExport_PermissionDenied() {
+  void testExport_PermissionDenied() {
     fakeCollector.setReturnedStatus(Status.PERMISSION_DENIED);
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     try {
-      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())))
-          .isEqualTo(ResultCode.FAILURE);
+      assertThat(exporter.export(Collections.singletonList(generateFakeMetric())).isSuccess())
+          .isFalse();
     } finally {
       exporter.shutdown();
     }
   }
 
   @Test
-  public void testExport_flush() {
+  void testExport_flush() {
     OtlpGrpcMetricExporter exporter =
         OtlpGrpcMetricExporter.newBuilder().setChannel(inProcessChannel).build();
     try {
-      assertThat(exporter.flush()).isEqualTo(ResultCode.SUCCESS);
+      assertThat(exporter.flush().isSuccess()).isTrue();
     } finally {
       exporter.shutdown();
     }

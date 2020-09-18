@@ -28,7 +28,6 @@ import io.opentelemetry.trace.Span.Kind;
 import io.opentelemetry.trace.SpanContext;
 import io.opentelemetry.trace.TraceId;
 import java.util.List;
-import javax.annotation.Nullable;
 
 /**
  * {@link RateLimitingSampler} sampler uses a leaky bucket rate limiter to ensure that traces are
@@ -41,8 +40,8 @@ class RateLimitingSampler implements Sampler {
 
   private final double maxTracesPerSecond;
   private final RateLimiter rateLimiter;
-  private final Decision onDecision;
-  private final Decision offDecision;
+  private final SamplingResult onSamplingResult;
+  private final SamplingResult offSamplingResult;
 
   /**
    * Creates rate limiting sampler.
@@ -57,19 +56,19 @@ class RateLimitingSampler implements Sampler {
         Attributes.of(
             SAMPLER_TYPE, AttributeValue.stringAttributeValue(TYPE),
             SAMPLER_PARAM, AttributeValue.doubleAttributeValue(maxTracesPerSecond));
-    this.onDecision = Samplers.decision(true, attributes);
-    this.offDecision = Samplers.decision(false, attributes);
+    this.onSamplingResult = Samplers.samplingResult(Decision.RECORD_AND_SAMPLED, attributes);
+    this.offSamplingResult = Samplers.samplingResult(Decision.NOT_RECORD, attributes);
   }
 
   @Override
-  public Decision shouldSample(
-      @Nullable SpanContext parentContext,
+  public SamplingResult shouldSample(
+      SpanContext parentContext,
       TraceId traceId,
       String name,
       Kind spanKind,
       ReadableAttributes attributes,
       List<Link> parentLinks) {
-    if (parentContext != null && parentContext.getTraceFlags().isSampled()) {
+    if (parentContext.getTraceFlags().isSampled()) {
       return Samplers.alwaysOn()
           .shouldSample(parentContext, traceId, name, spanKind, attributes, parentLinks);
     }
@@ -81,7 +80,7 @@ class RateLimitingSampler implements Sampler {
         }
       }
     }
-    return this.rateLimiter.checkCredit(1.0) ? onDecision : offDecision;
+    return this.rateLimiter.checkCredit(1.0) ? onSamplingResult : offSamplingResult;
   }
 
   @Override

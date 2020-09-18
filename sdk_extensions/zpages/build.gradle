@@ -2,6 +2,7 @@ plugins {
     id "java"
     id "maven-publish"
 
+    id "me.champeau.gradle.jmh"
     id "ru.vyarus.animalsniffer"
 }
 
@@ -13,7 +14,15 @@ dependencies {
             project(':opentelemetry-sdk')
 
     implementation libraries.guava
+    
     compileOnly 'com.sun.net.httpserver:http:20070405'
 
     signature "org.codehaus.mojo.signature:java17:1.0@signature"
+}
+
+animalsniffer {
+    // Don't check sourceSets.jmh and sourceSets.test
+    sourceSets = [
+            sourceSets.main
+    ]
 }

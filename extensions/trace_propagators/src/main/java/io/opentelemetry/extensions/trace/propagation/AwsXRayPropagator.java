@@ -17,7 +17,7 @@
 package io.opentelemetry.extensions.trace.propagation;
 
 import io.grpc.Context;
-import io.opentelemetry.context.propagation.HttpTextFormat;
+import io.opentelemetry.context.propagation.TextMapPropagator;
 import io.opentelemetry.trace.DefaultSpan;
 import io.opentelemetry.trace.Span;
 import io.opentelemetry.trace.SpanContext;
@@ -43,12 +43,12 @@ import javax.annotation.Nullable;
  * OpenTelemetry.setPropagators(
  *   DefaultContextPropagators
  *     .builder()
- *     .addHttpTextFormat(new HttpTraceContext())
- *     .addHttpTextFormat(new AWSXRayPropagator())
+ *     .addTextMapPropagator(new HttpTraceContext())
+ *     .addTextMapPropagator(new AWSXRayPropagator())
  *     .build());
  * }</pre>
  */
-public class AwsXRayPropagator implements HttpTextFormat {
+public class AwsXRayPropagator implements TextMapPropagator {
 
   // Visible for testing
   static final String TRACE_HEADER_KEY = "X-Amzn-Trace-Id";
@@ -157,7 +157,7 @@ public class AwsXRayPropagator implements HttpTextFormat {
       String trimmedPart = part.trim();
       int equalsIndex = trimmedPart.indexOf(KV_DELIMITER);
       if (equalsIndex < 0) {
-        logger.info(
+        logger.fine(
             "Error parsing X-Ray trace header. Invalid key value pair: "
                 + part
                 + " Returning INVALID span context.");
@@ -177,7 +177,7 @@ public class AwsXRayPropagator implements HttpTextFormat {
     }
 
     if (!traceId.isValid()) {
-      logger.info(
+      logger.fine(
           "Invalid TraceId in X-Ray trace header: '"
               + TRACE_HEADER_KEY
               + "' with value "
@@ -187,7 +187,7 @@ public class AwsXRayPropagator implements HttpTextFormat {
     }
 
     if (!spanId.isValid()) {
-      logger.info(
+      logger.fine(
           "Invalid ParentId in X-Ray trace header: '"
               + TRACE_HEADER_KEY
               + "' with value "
@@ -197,7 +197,7 @@ public class AwsXRayPropagator implements HttpTextFormat {
     }
 
     if (traceFlags == null) {
-      logger.info(
+      logger.fine(
           "Invalid Sampling flag in X-Ray trace header: '"
               + TRACE_HEADER_KEY
               + "' with value "

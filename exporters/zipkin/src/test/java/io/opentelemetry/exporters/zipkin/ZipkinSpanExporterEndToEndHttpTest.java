@@ -16,15 +16,15 @@
 
 package io.opentelemetry.exporters.zipkin;
 
-import static com.google.common.truth.Truth.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.collect.ImmutableList;
 import io.opentelemetry.common.Attributes;
+import io.opentelemetry.sdk.common.CompletableResultCode;
+import io.opentelemetry.sdk.trace.TestSpanData;
 import io.opentelemetry.sdk.trace.data.EventImpl;
 import io.opentelemetry.sdk.trace.data.SpanData;
 import io.opentelemetry.sdk.trace.data.SpanData.Event;
-import io.opentelemetry.sdk.trace.data.test.TestSpanData;
-import io.opentelemetry.sdk.trace.export.SpanExporter;
 import io.opentelemetry.trace.Span.Kind;
 import io.opentelemetry.trace.SpanId;
 import io.opentelemetry.trace.Status;
@@ -32,21 +32,20 @@ import io.opentelemetry.trace.TraceFlags;
 import io.opentelemetry.trace.TraceId;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
 import zipkin2.Endpoint;
 import zipkin2.Span;
 import zipkin2.codec.Encoding;
 import zipkin2.codec.SpanBytesEncoder;
 import zipkin2.junit.ZipkinRule;
+import zipkin2.reporter.okhttp3.OkHttpSender;
 
 /**
  * Tests which use Zipkin's {@link ZipkinRule} to verify that the {@link ZipkinSpanExporter} can
  * send spans via HTTP to Zipkin's API using supported encodings.
  */
-@RunWith(JUnit4.class)
 public class ZipkinSpanExporterEndToEndHttpTest {
 
   private static final String TRACE_ID = "d239036e7d5cec116b562147388b35bf";
@@ -93,6 +92,16 @@ public class ZipkinSpanExporterEndToEndHttpTest {
   }
 
   @Test
+  public void testExportAsThrift() {
+
+    @SuppressWarnings("deprecation") // we have to use the deprecated thrift encoding to test it
+    ZipkinSpanExporter exporter =
+        buildZipkinExporter(
+            zipkin.httpUrl() + ENDPOINT_V1_SPANS, Encoding.THRIFT, SpanBytesEncoder.THRIFT);
+    exportAndVerify(exporter);
+  }
+
+  @Test
   public void testExportAsJsonV1() {
     ZipkinSpanExporter exporter =
         buildZipkinExporter(
@@ -107,9 +116,9 @@ public class ZipkinSpanExporterEndToEndHttpTest {
             zipkin.httpUrl() + ENDPOINT_V2_SPANS, Encoding.JSON, SpanBytesEncoder.PROTO3);
 
     SpanData spanData = buildStandardSpan().build();
-    SpanExporter.ResultCode resultCode = zipkinSpanExporter.export(Collections.singleton(spanData));
+    CompletableResultCode resultCode = zipkinSpanExporter.export(Collections.singleton(spanData));
 
-    assertThat(resultCode).isEqualTo(SpanExporter.ResultCode.FAILURE);
+    assertThat(resultCode.isSuccess()).isFalse();
     List<Span> zipkinSpans = zipkin.getTrace(TRACE_ID);
     assertThat(zipkinSpans).isNotNull();
     assertThat(zipkinSpans).isEmpty();
@@ -118,8 +127,7 @@ public class ZipkinSpanExporterEndToEndHttpTest {
   private static ZipkinSpanExporter buildZipkinExporter(
       String endpoint, Encoding encoding, SpanBytesEncoder encoder) {
     return ZipkinSpanExporter.newBuilder()
-        .setSender(
-            ZipkinSpanExporterSender.newBuilder().endpoint(endpoint).encoding(encoding).build())
+        .setSender(OkHttpSender.newBuilder().endpoint(endpoint).encoding(encoding).build())
         .setServiceName(SERVICE_NAME)
         .setEncoder(encoder)
         .build();
@@ -132,9 +140,10 @@ public class ZipkinSpanExporterEndToEndHttpTest {
   private void exportAndVerify(ZipkinSpanExporter zipkinSpanExporter) {
 
     SpanData spanData = buildStandardSpan().build();
-    SpanExporter.ResultCode resultCode = zipkinSpanExporter.export(Collections.singleton(spanData));
+    CompletableResultCode resultCode = zipkinSpanExporter.export(Collections.singleton(spanData));
+    resultCode.join(10, TimeUnit.SECONDS);
 
-    assertThat(resultCode).isEqualTo(SpanExporter.ResultCode.SUCCESS);
+    assertThat(resultCode.isSuccess()).isTrue();
     List<Span> zipkinSpans = zipkin.getTrace(TRACE_ID);
 
     assertThat(zipkinSpans).isNotNull();

@@ -16,7 +16,8 @@
 
 package io.opentelemetry.sdk.extensions.zpages;
 
-import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.net.UrlEscapers.urlFormParameterEscaper;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.collect.ImmutableMap;
 import io.opentelemetry.sdk.internal.TestClock;
@@ -27,18 +28,21 @@ import io.opentelemetry.trace.Status.CanonicalCode;
 import io.opentelemetry.trace.Tracer;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Map;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 /** Unit tests for {@link TracezZPageHandler}. */
-@RunWith(JUnit4.class)
-public final class TracezZPageHandlerTest {
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class TracezZPageHandlerTest {
   private static final String FINISHED_SPAN_ONE = "FinishedSpanOne";
   private static final String FINISHED_SPAN_TWO = "FinishedSpanTwo";
   private static final String RUNNING_SPAN = "RunningSpan";
@@ -52,15 +56,13 @@ public final class TracezZPageHandlerTest {
   private final TracezDataAggregator dataAggregator = new TracezDataAggregator(spanProcessor);
   private final Map<String, String> emptyQueryMap = ImmutableMap.of();
 
-  @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
-
-  @Before
-  public void setup() {
+  @BeforeEach
+  void setup() {
     tracerSdkProvider.addSpanProcessor(spanProcessor);
   }
 
   @Test
-  public void summaryTable_emitRowForEachSpan() {
+  void summaryTable_emitRowForEachSpan() {
     OutputStream output = new ByteArrayOutputStream();
     Span finishedSpan1 = tracer.spanBuilder(FINISHED_SPAN_ONE).startSpan();
     Span finishedSpan2 = tracer.spanBuilder(FINISHED_SPAN_TWO).startSpan();
@@ -91,7 +93,7 @@ public final class TracezZPageHandlerTest {
   }
 
   @Test
-  public void summaryTable_linkForRunningSpans() {
+  void summaryTable_linkForRunningSpans() {
     OutputStream output = new ByteArrayOutputStream();
     Span runningSpan1 = tracer.spanBuilder(RUNNING_SPAN).startSpan();
     Span runningSpan2 = tracer.spanBuilder(RUNNING_SPAN).startSpan();
@@ -115,7 +117,7 @@ public final class TracezZPageHandlerTest {
   }
 
   @Test
-  public void summaryTable_linkForLatencyBasedSpans_NoneForEmptyBoundary() {
+  void summaryTable_linkForLatencyBasedSpans_NoneForEmptyBoundary() {
     OutputStream output = new ByteArrayOutputStream();
     TracezZPageHandler tracezZPageHandler = new TracezZPageHandler(dataAggregator);
     tracezZPageHandler.emitHtml(emptyQueryMap, output);
@@ -150,7 +152,7 @@ public final class TracezZPageHandlerTest {
   }
 
   @Test
-  public void summaryTable_linkForLatencyBasedSpans_OnePerBoundary() {
+  void summaryTable_linkForLatencyBasedSpans_OnePerBoundary() {
     OutputStream output = new ByteArrayOutputStream();
     // Boundary 0, >1us
     Span latencySpanSubtype0 = tracer.spanBuilder(LATENCY_SPAN).setStartTimestamp(1L).startSpan();
@@ -222,7 +224,7 @@ public final class TracezZPageHandlerTest {
   }
 
   @Test
-  public void summaryTable_linkForLatencyBasedSpans_MultipleForOneBoundary() {
+  void summaryTable_linkForLatencyBasedSpans_MultipleForOneBoundary() {
     OutputStream output = new ByteArrayOutputStream();
     // 4 samples in boundary 5, >100ms
     Span latencySpan100ms1 = tracer.spanBuilder(LATENCY_SPAN).setStartTimestamp(1L).startSpan();
@@ -247,7 +249,7 @@ public final class TracezZPageHandlerTest {
   }
 
   @Test
-  public void summaryTable_linkForErrorSpans() {
+  void summaryTable_linkForErrorSpans() {
     OutputStream output = new ByteArrayOutputStream();
     Span errorSpan1 = tracer.spanBuilder(ERROR_SPAN).startSpan();
     Span errorSpan2 = tracer.spanBuilder(ERROR_SPAN).startSpan();
@@ -273,7 +275,7 @@ public final class TracezZPageHandlerTest {
   }
 
   @Test
-  public void spanDetails_emitRunningSpanDetailsCorrectly() {
+  void spanDetails_emitRunningSpanDetailsCorrectly() {
     OutputStream output = new ByteArrayOutputStream();
     Span runningSpan = tracer.spanBuilder(RUNNING_SPAN).startSpan();
     Map<String, String> queryMap =
@@ -292,7 +294,7 @@ public final class TracezZPageHandlerTest {
   }
 
   @Test
-  public void spanDetails_emitLatencySpanDetailsCorrectly() {
+  void spanDetails_emitLatencySpanDetailsCorrectly() {
     OutputStream output = new ByteArrayOutputStream();
     Span latencySpan1 = tracer.spanBuilder(LATENCY_SPAN).setStartTimestamp(1L).startSpan();
     EndSpanOptions endOptions1 = EndSpanOptions.builder().setEndTimestamp(10002L).build();
@@ -316,7 +318,7 @@ public final class TracezZPageHandlerTest {
   }
 
   @Test
-  public void spanDetails_emitErrorSpanDetailsCorrectly() {
+  void spanDetails_emitErrorSpanDetailsCorrectly() {
     OutputStream output = new ByteArrayOutputStream();
     Span errorSpan1 = tracer.spanBuilder(ERROR_SPAN).startSpan();
     Span errorSpan2 = tracer.spanBuilder(ERROR_SPAN).startSpan();
@@ -340,7 +342,7 @@ public final class TracezZPageHandlerTest {
   }
 
   @Test
-  public void spanDetails_shouldNotBreakOnUnknownType() {
+  void spanDetails_shouldNotBreakOnUnknownType() {
     OutputStream output = new ByteArrayOutputStream();
     Map<String, String> queryMap =
         ImmutableMap.of("zspanname", "Span", "ztype", "-1", "zsubtype", "0");
@@ -350,5 +352,95 @@ public final class TracezZPageHandlerTest {
 
     assertThat(output.toString()).doesNotContain("<h2>Span Details</h2>");
     assertThat(output.toString()).doesNotContain("<b> Span Name: Span</b>");
+  }
+
+  private static ImmutableMap<String, String> generateQueryMap(
+      String spanName, String type, String subtype)
+      throws UnsupportedEncodingException, URISyntaxException {
+    return ZPageHttpHandler.parseQueryString(
+        new URI(
+                "tracez?zspanname="
+                    + urlFormParameterEscaper().escape(spanName)
+                    + "&ztype="
+                    + type
+                    + "&zsubtype="
+                    + subtype)
+            .getRawQuery());
+  }
+
+  @Test
+  void spanDetails_emitNameWithSpaceCorrectly()
+      throws UnsupportedEncodingException, URISyntaxException {
+    OutputStream output = new ByteArrayOutputStream();
+    String nameWithSpace = "SPAN NAME";
+    Span runningSpan = tracer.spanBuilder(nameWithSpace).startSpan();
+    tracer.spanBuilder(nameWithSpace).startSpan().end();
+    TracezZPageHandler tracezZPageHandler = new TracezZPageHandler(dataAggregator);
+
+    tracezZPageHandler.emitHtml(generateQueryMap(nameWithSpace, "0", "0"), output);
+    assertThat(output.toString()).contains("<b> Span Name: " + nameWithSpace + "</b>");
+    assertThat(output.toString()).contains("<b> Number of running: 1");
+    tracezZPageHandler.emitHtml(generateQueryMap(nameWithSpace, "1", "0"), output);
+    assertThat(output.toString()).contains("<b> Span Name: " + nameWithSpace + "</b>");
+    assertThat(output.toString()).contains("<b> Number of latency samples: 1");
+
+    runningSpan.end();
+  }
+
+  @Test
+  void spanDetails_emitNameWithPlusCorrectly()
+      throws UnsupportedEncodingException, URISyntaxException {
+    OutputStream output = new ByteArrayOutputStream();
+    String nameWithPlus = "SPAN+NAME";
+    Span runningSpan = tracer.spanBuilder(nameWithPlus).startSpan();
+    tracer.spanBuilder(nameWithPlus).startSpan().end();
+    TracezZPageHandler tracezZPageHandler = new TracezZPageHandler(dataAggregator);
+
+    tracezZPageHandler.emitHtml(generateQueryMap(nameWithPlus, "0", "0"), output);
+    assertThat(output.toString()).contains("<b> Span Name: " + nameWithPlus + "</b>");
+    assertThat(output.toString()).contains("<b> Number of running: 1");
+    tracezZPageHandler.emitHtml(generateQueryMap(nameWithPlus, "1", "0"), output);
+    assertThat(output.toString()).contains("<b> Span Name: " + nameWithPlus + "</b>");
+    assertThat(output.toString()).contains("<b> Number of latency samples: 1");
+
+    runningSpan.end();
+  }
+
+  @Test
+  void spanDetails_emitNamesWithSpaceAndPlusCorrectly()
+      throws UnsupportedEncodingException, URISyntaxException {
+    OutputStream output = new ByteArrayOutputStream();
+    String nameWithSpaceAndPlus = "SPAN + NAME";
+    Span runningSpan = tracer.spanBuilder(nameWithSpaceAndPlus).startSpan();
+    tracer.spanBuilder(nameWithSpaceAndPlus).startSpan().end();
+    TracezZPageHandler tracezZPageHandler = new TracezZPageHandler(dataAggregator);
+
+    tracezZPageHandler.emitHtml(generateQueryMap(nameWithSpaceAndPlus, "0", "0"), output);
+    assertThat(output.toString()).contains("<b> Span Name: " + nameWithSpaceAndPlus + "</b>");
+    assertThat(output.toString()).contains("<b> Number of running: 1");
+    tracezZPageHandler.emitHtml(generateQueryMap(nameWithSpaceAndPlus, "1", "0"), output);
+    assertThat(output.toString()).contains("<b> Span Name: " + nameWithSpaceAndPlus + "</b>");
+    assertThat(output.toString()).contains("<b> Number of latency samples: 1");
+
+    runningSpan.end();
+  }
+
+  @Test
+  void spanDetails_emitNamesWithSpecialUrlCharsCorrectly()
+      throws UnsupportedEncodingException, URISyntaxException {
+    OutputStream output = new ByteArrayOutputStream();
+    String nameWithUrlChars = "{SPAN/NAME}";
+    Span runningSpan = tracer.spanBuilder(nameWithUrlChars).startSpan();
+    tracer.spanBuilder(nameWithUrlChars).startSpan().end();
+    TracezZPageHandler tracezZPageHandler = new TracezZPageHandler(dataAggregator);
+
+    tracezZPageHandler.emitHtml(generateQueryMap(nameWithUrlChars, "0", "0"), output);
+    assertThat(output.toString()).contains("<b> Span Name: " + nameWithUrlChars + "</b>");
+    assertThat(output.toString()).contains("<b> Number of running: 1");
+    tracezZPageHandler.emitHtml(generateQueryMap(nameWithUrlChars, "1", "0"), output);
+    assertThat(output.toString()).contains("<b> Span Name: " + nameWithUrlChars + "</b>");
+    assertThat(output.toString()).contains("<b> Number of latency samples: 1");
+
+    runningSpan.end();
   }
 }
