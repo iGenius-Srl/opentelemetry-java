@@ -146,6 +146,7 @@ public final class ZipkinSpanExporterSender2 extends Sender {
     if (builder.endpoint == null) throw new NullPointerException("endpoint == null");
     endpoint = builder.endpoint;
     encoding = builder.encoding;
+    token = builder.token;
     switch (encoding) {
       case JSON:
         encoder = RequestBodyMessageEncoder.JSON;
