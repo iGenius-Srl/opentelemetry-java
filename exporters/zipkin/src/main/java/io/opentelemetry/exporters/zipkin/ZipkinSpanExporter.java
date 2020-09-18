@@ -31,7 +31,6 @@ import io.opentelemetry.sdk.trace.export.SpanExporter;
 import io.opentelemetry.trace.Span.Kind;
 import io.opentelemetry.trace.Status;
 import io.opentelemetry.trace.attributes.SemanticAttributes;
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.ArrayList;
@@ -90,10 +89,11 @@ public final class ZipkinSpanExporter implements SpanExporter {
   static final String KEY_INSTRUMENTATION_LIBRARY_VERSION = "otel.instrumentation_library.version";
 
   private final BytesEncoder<Span> encoder;
-  private final Sender sender;
+  private final ZipkinSpanExporterSender2 sender;
   private final Endpoint localEndpoint;
 
-  ZipkinSpanExporter(BytesEncoder<Span> encoder, Sender sender, String serviceName) {
+  ZipkinSpanExporter(
+      BytesEncoder<Span> encoder, ZipkinSpanExporterSender2 sender, String serviceName) {
     this.encoder = encoder;
     this.sender = sender;
     this.localEndpoint = produceLocalEndpoint(serviceName);
@@ -290,12 +290,12 @@ public final class ZipkinSpanExporter implements SpanExporter {
 
   @Override
   public CompletableResultCode shutdown() {
-    try {
-      sender.close();
-    } catch (IOException e) {
-      logger.log(Level.WARNING, "Exception while closing the Zipkin Sender instance", e);
-    }
+    sender.close();
     return CompletableResultCode.ofSuccess();
+  }
+
+  public void setRefreshedToken(String token) {
+    sender.token = token;
   }
 
   /**
@@ -312,9 +312,9 @@ public final class ZipkinSpanExporter implements SpanExporter {
     private static final String KEY_SERVICE_NAME = "otel.zipkin.service.name";
     private static final String KEY_ENDPOINT = "otel.zipkin.endpoint";
     private BytesEncoder<Span> encoder = SpanBytesEncoder.JSON_V2;
-    private Sender sender;
+    private ZipkinSpanExporterSender2 sender;
+    private String token = "";
     private String serviceName = DEFAULT_SERVICE_NAME;
-    private String endpoint = DEFAULT_ENDPOINT;
 
     /**
      * Label of the remote node in the service graph, such as "favstar". Avoid names with variables
@@ -351,7 +351,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @return this.
      * @since 0.4.0
      */
-    public Builder setSender(Sender sender) {
+    public Builder setSender(ZipkinSpanExporterSender2 sender) {
       this.sender = sender;
       return this;
     }
@@ -370,6 +370,11 @@ public final class ZipkinSpanExporter implements SpanExporter {
       return this;
     }
 
+    public Builder setAuthToken(String token) {
+      this.token = token;
+      return this;
+    }
+
     /**
      * Sets the zipkin endpoint. This will use the endpoint to assign a {@link OkHttpSender}
      * instance to this builder.
@@ -380,7 +385,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @since 0.4.0
      */
     public Builder setEndpoint(String endpoint) {
-      this.endpoint = endpoint;
+      setSender(ZipkinSpanExporterSender2.create(endpoint, token));
       return this;
     }
 
@@ -412,9 +417,6 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @since 0.4.0
      */
     public ZipkinSpanExporter build() {
-      if (sender == null) {
-        sender = OkHttpSender.create(endpoint);
-      }
       return new ZipkinSpanExporter(this.encoder, this.sender, this.serviceName);
     }
   }
