@@ -19,13 +19,19 @@ package io.opentelemetry.exporters.otlp;
 import static io.grpc.Metadata.ASCII_STRING_MARSHALLER;
 
 import com.google.common.base.Splitter;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.MoreExecutors;
+import io.grpc.ConnectivityState;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Metadata;
-import io.grpc.Metadata.Key;
 import io.grpc.stub.MetadataUtils;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
+import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse;
 import io.opentelemetry.proto.collector.trace.v1.TraceServiceGrpc;
+import io.opentelemetry.proto.collector.trace.v1.TraceServiceGrpc.TraceServiceFutureStub;
+import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.common.export.ConfigBuilder;
 import io.opentelemetry.sdk.trace.data.SpanData;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
@@ -69,9 +75,12 @@ import javax.annotation.concurrent.ThreadSafe;
  */
 @ThreadSafe
 public final class OtlpGrpcSpanExporter implements SpanExporter {
+  public static final String DEFAULT_ENDPOINT = "localhost:55680";
+  public static final long DEFAULT_DEADLINE_MS = TimeUnit.SECONDS.toMillis(1);
+
   private static final Logger logger = Logger.getLogger(OtlpGrpcSpanExporter.class.getName());
 
-  private final TraceServiceGrpc.TraceServiceBlockingStub blockingStub;
+  private final TraceServiceFutureStub traceService;
   private final ManagedChannel managedChannel;
   private final long deadlineMs;
 
@@ -84,8 +93,8 @@ public final class OtlpGrpcSpanExporter implements SpanExporter {
    */
   private OtlpGrpcSpanExporter(ManagedChannel channel, long deadlineMs) {
     this.managedChannel = channel;
-    this.blockingStub = TraceServiceGrpc.newBlockingStub(channel);
     this.deadlineMs = deadlineMs;
+    this.traceService = TraceServiceGrpc.newFutureStub(channel);
   }
 
   /**
@@ -95,25 +104,37 @@ public final class OtlpGrpcSpanExporter implements SpanExporter {
    * @return the result of the operation
    */
   @Override
-  public ResultCode export(Collection<SpanData> spans) {
+  public CompletableResultCode export(Collection<SpanData> spans) {
     ExportTraceServiceRequest exportTraceServiceRequest =
         ExportTraceServiceRequest.newBuilder()
             .addAllResourceSpans(SpanAdapter.toProtoResourceSpans(spans))
             .build();
 
-    try {
-      TraceServiceGrpc.TraceServiceBlockingStub stub = this.blockingStub;
-      if (deadlineMs > 0) {
-        stub = stub.withDeadlineAfter(deadlineMs, TimeUnit.MILLISECONDS);
-      }
+    final CompletableResultCode result = new CompletableResultCode();
 
-      // for now, there's nothing to check in the response object
-      // noinspection ResultOfMethodCallIgnored
-      stub.export(exportTraceServiceRequest);
-      return ResultCode.SUCCESS;
-    } catch (Throwable e) {
-      return ResultCode.FAILURE;
+    TraceServiceFutureStub exporter;
+    if (deadlineMs > 0) {
+      exporter = traceService.withDeadlineAfter(deadlineMs, TimeUnit.MILLISECONDS);
+    } else {
+      exporter = traceService;
     }
+
+    Futures.addCallback(
+        exporter.export(exportTraceServiceRequest),
+        new FutureCallback<ExportTraceServiceResponse>() {
+          @Override
+          public void onSuccess(@Nullable ExportTraceServiceResponse response) {
+            result.succeed();
+          }
+
+          @Override
+          public void onFailure(Throwable t) {
+            logger.log(Level.WARNING, "Failed to export spans", t);
+            result.fail();
+          }
+        },
+        MoreExecutors.directExecutor());
+    return result;
   }
 
   /**
@@ -122,8 +143,8 @@ public final class OtlpGrpcSpanExporter implements SpanExporter {
    * @return always Success
    */
   @Override
-  public ResultCode flush() {
-    return ResultCode.SUCCESS;
+  public CompletableResultCode flush() {
+    return CompletableResultCode.ofSuccess();
   }
 
   /**
@@ -149,15 +170,21 @@ public final class OtlpGrpcSpanExporter implements SpanExporter {
 
   /**
    * Initiates an orderly shutdown in which preexisting calls continue but new calls are immediately
-   * cancelled. The channel is forcefully closed after a timeout.
+   * cancelled.
    */
   @Override
-  public void shutdown() {
-    try {
-      managedChannel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      logger.log(Level.WARNING, "Failed to shutdown the gRPC channel", e);
-    }
+  public CompletableResultCode shutdown() {
+    final CompletableResultCode result = new CompletableResultCode();
+    managedChannel.notifyWhenStateChanged(
+        ConnectivityState.SHUTDOWN,
+        new Runnable() {
+          @Override
+          public void run() {
+            result.succeed();
+          }
+        });
+    managedChannel.shutdown();
+    return result;
   }
 
   /** Builder utility for this exporter. */
@@ -167,14 +194,14 @@ public final class OtlpGrpcSpanExporter implements SpanExporter {
     private static final String KEY_USE_TLS = "otel.otlp.use.tls";
     private static final String KEY_METADATA = "otel.otlp.metadata";
     private ManagedChannel channel;
-    private long deadlineMs = 1_000; // 1 second
-    @Nullable private String endpoint;
+    private long deadlineMs = DEFAULT_DEADLINE_MS; // 1 second
+    private String endpoint = DEFAULT_ENDPOINT;
     private boolean useTls;
     @Nullable private Metadata metadata;
 
     /**
-     * Sets the managed chanel to use when communicating with the backend. Required if {@link
-     * Builder#endpoint} is not set. If {@link Builder#endpoint} is set then build the channel.
+     * Sets the managed chanel to use when communicating with the backend. Takes precedence over
+     * {@link #setEndpoint(String)} if both are called.
      *
      * @param channel the channel to use
      * @return this builder's instance
@@ -196,7 +223,7 @@ public final class OtlpGrpcSpanExporter implements SpanExporter {
     }
 
     /**
-     * Sets the OTLP endpoint to connect to. Optional.
+     * Sets the OTLP endpoint to connect to. Optional, defaults to "localhost:55680".
      *
      * @param endpoint endpoint to connect to
      * @return this builder's instance
@@ -230,7 +257,7 @@ public final class OtlpGrpcSpanExporter implements SpanExporter {
       if (metadata == null) {
         metadata = new Metadata();
       }
-      metadata.put(Key.of(key, ASCII_STRING_MARSHALLER), value);
+      metadata.put(Metadata.Key.of(key, ASCII_STRING_MARSHALLER), value);
       return this;
     }
 
@@ -240,7 +267,7 @@ public final class OtlpGrpcSpanExporter implements SpanExporter {
      * @return a new exporter's instance
      */
     public OtlpGrpcSpanExporter build() {
-      if (endpoint != null) {
+      if (channel == null) {
         final ManagedChannelBuilder<?> managedChannelBuilder =
             ManagedChannelBuilder.forTarget(endpoint);
 
@@ -288,7 +315,12 @@ public final class OtlpGrpcSpanExporter implements SpanExporter {
       String metadataValue = getStringProperty(KEY_METADATA, configMap);
       if (metadataValue != null) {
         for (String keyValueString : Splitter.on(';').split(metadataValue)) {
-          final List<String> keyValue = Splitter.on('=').splitToList(keyValueString);
+          final List<String> keyValue =
+              Splitter.on('=')
+                  .limit(2)
+                  .trimResults()
+                  .omitEmptyStrings()
+                  .splitToList(keyValueString);
           if (keyValue.size() == 2) {
             addHeader(keyValue.get(0), keyValue.get(1));
           }

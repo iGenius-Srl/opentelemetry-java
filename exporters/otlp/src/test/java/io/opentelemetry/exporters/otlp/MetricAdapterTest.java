@@ -16,8 +16,9 @@
 
 package io.opentelemetry.exporters.otlp;
 
-import static com.google.common.truth.Truth.assertThat;
+import static io.opentelemetry.proto.metrics.v1.AggregationTemporality.AGGREGATION_TEMPORALITY_CUMULATIVE;
 import static java.util.Collections.singletonList;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.collect.ImmutableList;
 import io.opentelemetry.common.AttributeValue;
@@ -28,30 +29,25 @@ import io.opentelemetry.proto.common.v1.InstrumentationLibrary;
 import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.common.v1.StringKeyValue;
 import io.opentelemetry.proto.metrics.v1.DoubleDataPoint;
+import io.opentelemetry.proto.metrics.v1.DoubleHistogramDataPoint;
+import io.opentelemetry.proto.metrics.v1.DoubleSum;
 import io.opentelemetry.proto.metrics.v1.InstrumentationLibraryMetrics;
-import io.opentelemetry.proto.metrics.v1.Int64DataPoint;
+import io.opentelemetry.proto.metrics.v1.IntDataPoint;
+import io.opentelemetry.proto.metrics.v1.IntSum;
 import io.opentelemetry.proto.metrics.v1.Metric;
-import io.opentelemetry.proto.metrics.v1.MetricDescriptor;
-import io.opentelemetry.proto.metrics.v1.MetricDescriptor.Temporality;
-import io.opentelemetry.proto.metrics.v1.MetricDescriptor.Type;
 import io.opentelemetry.proto.metrics.v1.ResourceMetrics;
-import io.opentelemetry.proto.metrics.v1.SummaryDataPoint;
-import io.opentelemetry.proto.metrics.v1.SummaryDataPoint.ValueAtPercentile;
 import io.opentelemetry.sdk.common.InstrumentationLibraryInfo;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.metrics.data.MetricData.Descriptor;
 import io.opentelemetry.sdk.resources.Resource;
 import java.util.Arrays;
 import java.util.Collections;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.jupiter.api.Test;
 
 /** Unit tests for {@link MetricAdapter}. */
-@RunWith(JUnit4.class)
-public class MetricAdapterTest {
+class MetricAdapterTest {
   @Test
-  public void toProtoLabels() {
+  void toProtoLabels() {
     assertThat(MetricAdapter.toProtoLabels(Labels.empty())).isEmpty();
     assertThat(MetricAdapter.toProtoLabels(Labels.of("k", "v")))
         .containsExactly(StringKeyValue.newBuilder().setKey("k").setValue("v").build());
@@ -62,38 +58,30 @@ public class MetricAdapterTest {
   }
 
   @Test
-  public void toProtoMetricDescriptorType() {
-    assertThat(MetricAdapter.toProtoMetricDescriptorType(Descriptor.Type.NON_MONOTONIC_DOUBLE))
-        .isEqualTo(Type.DOUBLE);
-    assertThat(MetricAdapter.toProtoMetricDescriptorType(Descriptor.Type.NON_MONOTONIC_LONG))
-        .isEqualTo(Type.INT64);
-    assertThat(MetricAdapter.toProtoMetricDescriptorType(Descriptor.Type.MONOTONIC_DOUBLE))
-        .isEqualTo(Type.MONOTONIC_DOUBLE);
-    assertThat(MetricAdapter.toProtoMetricDescriptorType(Descriptor.Type.MONOTONIC_LONG))
-        .isEqualTo(Type.MONOTONIC_INT64);
-    assertThat(MetricAdapter.toProtoMetricDescriptorType(Descriptor.Type.SUMMARY))
-        .isEqualTo(Type.SUMMARY);
+  void toProtoValueAtPercentiles() {
+    DoubleHistogramDataPoint.Builder builder = DoubleHistogramDataPoint.newBuilder();
+    MetricAdapter.addBucketValues(Collections.emptyList(), builder);
+    // 0 count in default bucket of [-infinity, infinity].
+    assertThat(builder.getBucketCountsList()).containsExactly(0L);
+
+    builder.clear();
+    MetricAdapter.addBucketValues(
+        singletonList(MetricData.ValueAtPercentile.create(0.9, 1.1)), builder);
+    assertThat(builder.getBucketCountsList()).containsExactly(1L, 0L);
+    assertThat(builder.getExplicitBoundsList()).containsExactly(0.9);
+
+    builder.clear();
+    MetricAdapter.addBucketValues(
+        ImmutableList.of(
+            MetricData.ValueAtPercentile.create(0.9, 1.1),
+            MetricData.ValueAtPercentile.create(0.99, 20.3)),
+        builder);
+    assertThat(builder.getBucketCountsList()).containsExactly(1L, 20L, 0L);
+    assertThat(builder.getExplicitBoundsList()).containsExactly(0.9, 0.99);
   }
 
   @Test
-  public void toProtoValueAtPercentiles() {
-    assertThat(MetricAdapter.toProtoValueAtPercentiles(Collections.emptyList())).isEmpty();
-    assertThat(
-            MetricAdapter.toProtoValueAtPercentiles(
-                singletonList(MetricData.ValueAtPercentile.create(0.9, 1.1))))
-        .containsExactly(ValueAtPercentile.newBuilder().setPercentile(0.9).setValue(1.1).build());
-    assertThat(
-            MetricAdapter.toProtoValueAtPercentiles(
-                ImmutableList.of(
-                    MetricData.ValueAtPercentile.create(0.9, 1.1),
-                    MetricData.ValueAtPercentile.create(0.99, 20.3))))
-        .containsExactly(
-            ValueAtPercentile.newBuilder().setPercentile(0.9).setValue(1.1).build(),
-            ValueAtPercentile.newBuilder().setPercentile(0.99).setValue(20.3).build());
-  }
-
-  @Test
-  public void toInt64DataPoints() {
+  void toInt64DataPoints() {
     Descriptor descriptor =
         Descriptor.create(
             "test",
@@ -101,13 +89,13 @@ public class MetricAdapterTest {
             "unit",
             Descriptor.Type.MONOTONIC_LONG,
             Labels.of("ck", "cv"));
-    assertThat(MetricAdapter.toInt64DataPoints(Collections.emptyList(), descriptor)).isEmpty();
+    assertThat(MetricAdapter.toIntDataPoints(Collections.emptyList(), descriptor)).isEmpty();
     assertThat(
-            MetricAdapter.toInt64DataPoints(
+            MetricAdapter.toIntDataPoints(
                 singletonList(MetricData.LongPoint.create(123, 456, Labels.of("k", "v"), 5)),
                 descriptor))
         .containsExactly(
-            Int64DataPoint.newBuilder()
+            IntDataPoint.newBuilder()
                 .setStartTimeUnixNano(123)
                 .setTimeUnixNano(456)
                 .addAllLabels(
@@ -117,20 +105,20 @@ public class MetricAdapterTest {
                 .setValue(5)
                 .build());
     assertThat(
-            MetricAdapter.toInt64DataPoints(
+            MetricAdapter.toIntDataPoints(
                 ImmutableList.of(
                     MetricData.LongPoint.create(123, 456, Labels.empty(), 5),
                     MetricData.LongPoint.create(321, 654, Labels.of("k", "v"), 7)),
                 descriptor))
         .containsExactly(
-            Int64DataPoint.newBuilder()
+            IntDataPoint.newBuilder()
                 .setStartTimeUnixNano(123)
                 .setTimeUnixNano(456)
                 .addAllLabels(
                     singletonList(StringKeyValue.newBuilder().setKey("ck").setValue("cv").build()))
                 .setValue(5)
                 .build(),
-            Int64DataPoint.newBuilder()
+            IntDataPoint.newBuilder()
                 .setStartTimeUnixNano(321)
                 .setTimeUnixNano(654)
                 .addAllLabels(
@@ -142,7 +130,7 @@ public class MetricAdapterTest {
   }
 
   @Test
-  public void toDoubleDataPoints() {
+  void toDoubleDataPoints() {
     Descriptor descriptor =
         Descriptor.create(
             "test",
@@ -191,7 +179,7 @@ public class MetricAdapterTest {
   }
 
   @Test
-  public void toSummaryDataPoints() {
+  void toSummaryDataPoints() {
     Descriptor descriptor =
         Descriptor.create(
             "test", "testDescription", "unit", Descriptor.Type.SUMMARY, Labels.of("ck", "cv"));
@@ -207,7 +195,7 @@ public class MetricAdapterTest {
                         singletonList(MetricData.ValueAtPercentile.create(0.9, 1.1)))),
                 descriptor))
         .containsExactly(
-            SummaryDataPoint.newBuilder()
+            DoubleHistogramDataPoint.newBuilder()
                 .setStartTimeUnixNano(123)
                 .setTimeUnixNano(456)
                 .addAllLabels(
@@ -216,9 +204,9 @@ public class MetricAdapterTest {
                         StringKeyValue.newBuilder().setKey("k").setValue("v").build()))
                 .setCount(5)
                 .setSum(14.2)
-                .addAllPercentileValues(
-                    singletonList(
-                        ValueAtPercentile.newBuilder().setPercentile(0.9).setValue(1.1).build()))
+                .addBucketCounts(1)
+                .addBucketCounts(0)
+                .addExplicitBounds(0.9)
                 .build());
     assertThat(
             MetricAdapter.toSummaryDataPoints(
@@ -236,7 +224,7 @@ public class MetricAdapterTest {
                             MetricData.ValueAtPercentile.create(0.99, 20.3)))),
                 descriptor))
         .containsExactly(
-            SummaryDataPoint.newBuilder()
+            DoubleHistogramDataPoint.newBuilder()
                 .setStartTimeUnixNano(123)
                 .setTimeUnixNano(456)
                 .addAllLabels(
@@ -244,7 +232,7 @@ public class MetricAdapterTest {
                 .setCount(7)
                 .setSum(15.3)
                 .build(),
-            SummaryDataPoint.newBuilder()
+            DoubleHistogramDataPoint.newBuilder()
                 .setStartTimeUnixNano(321)
                 .setTimeUnixNano(654)
                 .addAllLabels(
@@ -253,63 +241,16 @@ public class MetricAdapterTest {
                         StringKeyValue.newBuilder().setKey("k").setValue("v").build()))
                 .setCount(9)
                 .setSum(18.3)
-                .addAllPercentileValues(
-                    ImmutableList.of(
-                        ValueAtPercentile.newBuilder().setPercentile(0.9).setValue(1.1).build(),
-                        ValueAtPercentile.newBuilder().setPercentile(0.99).setValue(20.3).build()))
+                .addBucketCounts(1)
+                .addBucketCounts(20)
+                .addBucketCounts(0)
+                .addExplicitBounds(0.9)
+                .addExplicitBounds(0.99)
                 .build());
   }
 
   @Test
-  public void toProtoMetricDescriptor() {
-    assertThat(
-            MetricAdapter.toProtoMetricDescriptor(
-                Descriptor.create(
-                    "name",
-                    "description",
-                    "1",
-                    Descriptor.Type.MONOTONIC_DOUBLE,
-                    Labels.of("k", "v"))))
-        .isEqualTo(
-            MetricDescriptor.newBuilder()
-                .setName("name")
-                .setDescription("description")
-                .setUnit("1")
-                .setType(Type.MONOTONIC_DOUBLE)
-                .setTemporality(Temporality.CUMULATIVE)
-                .build());
-    assertThat(
-            MetricAdapter.toProtoMetricDescriptor(
-                Descriptor.create(
-                    "name",
-                    "description",
-                    "1",
-                    Descriptor.Type.NON_MONOTONIC_DOUBLE,
-                    Labels.empty())))
-        .isEqualTo(
-            MetricDescriptor.newBuilder()
-                .setName("name")
-                .setDescription("description")
-                .setUnit("1")
-                .setType(Type.DOUBLE)
-                .setTemporality(Temporality.CUMULATIVE)
-                .build());
-    assertThat(
-            MetricAdapter.toProtoMetricDescriptor(
-                Descriptor.create(
-                    "name", "description", "1", Descriptor.Type.SUMMARY, Labels.empty())))
-        .isEqualTo(
-            MetricDescriptor.newBuilder()
-                .setName("name")
-                .setDescription("description")
-                .setUnit("1")
-                .setType(Type.SUMMARY)
-                .setTemporality(Temporality.DELTA)
-                .build());
-  }
-
-  @Test
-  public void toProtoMetric() {
+  void toProtoMetric() {
     assertThat(
             MetricAdapter.toProtoMetric(
                 MetricData.create(
@@ -324,25 +265,30 @@ public class MetricAdapterTest {
                     singletonList(MetricData.LongPoint.create(123, 456, Labels.of("k", "v"), 5)))))
         .isEqualTo(
             Metric.newBuilder()
-                .setMetricDescriptor(
-                    MetricDescriptor.newBuilder()
-                        .setName("name")
-                        .setDescription("description")
-                        .setUnit("1")
-                        .setType(Type.MONOTONIC_INT64)
-                        .setTemporality(Temporality.CUMULATIVE)
+                .setName("name")
+                .setDescription("description")
+                .setUnit("1")
+                .setIntSum(
+                    IntSum.newBuilder()
+                        .setIsMonotonic(true)
+                        .setAggregationTemporality(AGGREGATION_TEMPORALITY_CUMULATIVE)
+                        .addDataPoints(
+                            IntDataPoint.newBuilder()
+                                .setStartTimeUnixNano(123)
+                                .setTimeUnixNano(456)
+                                .addAllLabels(
+                                    Arrays.asList(
+                                        StringKeyValue.newBuilder()
+                                            .setKey("ck")
+                                            .setValue("cv")
+                                            .build(),
+                                        StringKeyValue.newBuilder()
+                                            .setKey("k")
+                                            .setValue("v")
+                                            .build()))
+                                .setValue(5)
+                                .build())
                         .build())
-                .addAllInt64DataPoints(
-                    singletonList(
-                        Int64DataPoint.newBuilder()
-                            .setStartTimeUnixNano(123)
-                            .setTimeUnixNano(456)
-                            .addAllLabels(
-                                Arrays.asList(
-                                    StringKeyValue.newBuilder().setKey("ck").setValue("cv").build(),
-                                    StringKeyValue.newBuilder().setKey("k").setValue("v").build()))
-                            .setValue(5)
-                            .build()))
                 .build());
     assertThat(
             MetricAdapter.toProtoMetric(
@@ -359,30 +305,35 @@ public class MetricAdapterTest {
                         MetricData.DoublePoint.create(123, 456, Labels.of("k", "v"), 5.1)))))
         .isEqualTo(
             Metric.newBuilder()
-                .setMetricDescriptor(
-                    MetricDescriptor.newBuilder()
-                        .setName("name")
-                        .setDescription("description")
-                        .setUnit("1")
-                        .setType(Type.MONOTONIC_DOUBLE)
-                        .setTemporality(Temporality.CUMULATIVE)
+                .setName("name")
+                .setDescription("description")
+                .setUnit("1")
+                .setDoubleSum(
+                    DoubleSum.newBuilder()
+                        .setIsMonotonic(true)
+                        .setAggregationTemporality(AGGREGATION_TEMPORALITY_CUMULATIVE)
+                        .addDataPoints(
+                            DoubleDataPoint.newBuilder()
+                                .setStartTimeUnixNano(123)
+                                .setTimeUnixNano(456)
+                                .addAllLabels(
+                                    Arrays.asList(
+                                        StringKeyValue.newBuilder()
+                                            .setKey("ck")
+                                            .setValue("cv")
+                                            .build(),
+                                        StringKeyValue.newBuilder()
+                                            .setKey("k")
+                                            .setValue("v")
+                                            .build()))
+                                .setValue(5.1)
+                                .build())
                         .build())
-                .addAllDoubleDataPoints(
-                    singletonList(
-                        DoubleDataPoint.newBuilder()
-                            .setStartTimeUnixNano(123)
-                            .setTimeUnixNano(456)
-                            .addAllLabels(
-                                Arrays.asList(
-                                    StringKeyValue.newBuilder().setKey("ck").setValue("cv").build(),
-                                    StringKeyValue.newBuilder().setKey("k").setValue("v").build()))
-                            .setValue(5.1)
-                            .build()))
                 .build());
   }
 
   @Test
-  public void toProtoResourceMetrics() {
+  void toProtoResourceMetrics() {
     Descriptor descriptor =
         Descriptor.create(
             "name", "description", "1", Descriptor.Type.MONOTONIC_DOUBLE, Labels.of("k", "v"));
@@ -406,16 +357,7 @@ public class MetricAdapterTest {
     InstrumentationLibrary emptyInstrumentationLibraryProto =
         InstrumentationLibrary.newBuilder().setName("").setVersion("").build();
     Metric metricNoPoints =
-        Metric.newBuilder()
-            .setMetricDescriptor(
-                MetricDescriptor.newBuilder()
-                    .setName("name")
-                    .setDescription("description")
-                    .setUnit("1")
-                    .setType(Type.MONOTONIC_DOUBLE)
-                    .setTemporality(Temporality.CUMULATIVE)
-                    .build())
-            .build();
+        Metric.newBuilder().setName("name").setDescription("description").setUnit("1").build();
 
     assertThat(
             MetricAdapter.toProtoResourceMetrics(
@@ -434,7 +376,7 @@ public class MetricAdapterTest {
                         Resource.getEmpty(),
                         InstrumentationLibraryInfo.getEmpty(),
                         Collections.emptyList()))))
-        .containsExactly(
+        .containsExactlyInAnyOrder(
             ResourceMetrics.newBuilder()
                 .setResource(resourceProto)
                 .addAllInstrumentationLibraryMetrics(

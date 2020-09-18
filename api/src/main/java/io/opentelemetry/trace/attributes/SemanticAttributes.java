@@ -107,52 +107,189 @@ public final class SemanticAttributes {
    * The size of the request payload body, in bytes. For payloads using transport encoding, this is
    * the compressed size.
    */
-  public static final StringAttributeSetter HTTP_REQUEST_CONTENT_LENGTH =
-      StringAttributeSetter.create("http.request_content_length");
+  public static final LongAttributeSetter HTTP_REQUEST_CONTENT_LENGTH =
+      LongAttributeSetter.create("http.request_content_length");
   /**
    * The size of the uncompressed request payload body, in bytes. Only set for requests that use
    * transport encoding.
    */
-  public static final StringAttributeSetter HTTP_REQUEST_CONTENT_LENGTH_UNCOMPRESSED =
-      StringAttributeSetter.create("http.request_content_length_uncompressed");
+  public static final LongAttributeSetter HTTP_REQUEST_CONTENT_LENGTH_UNCOMPRESSED =
+      LongAttributeSetter.create("http.request_content_length_uncompressed");
   /**
    * The size of the response payload body, in bytes. For payloads using transport encoding, this is
    * the compressed size.
    */
-  public static final StringAttributeSetter HTTP_RESPONSE_CONTENT_LENGTH =
-      StringAttributeSetter.create("http.response_content_length");
+  public static final LongAttributeSetter HTTP_RESPONSE_CONTENT_LENGTH =
+      LongAttributeSetter.create("http.response_content_length");
   /**
    * The size of the uncompressed response payload body, in bytes. Only set for responses that use
    * transport encoding.
    */
-  public static final StringAttributeSetter HTTP_RESPONSE_CONTENT_LENGTH_UNCOMPRESSED =
-      StringAttributeSetter.create("http.response_content_length_uncompressed");
-  /** The service name, must be equal to the $service part in the span name. */
+  public static final LongAttributeSetter HTTP_RESPONSE_CONTENT_LENGTH_UNCOMPRESSED =
+      LongAttributeSetter.create("http.response_content_length_uncompressed");
+
+  /** A string identifying the remoting system, e.g., "grpc", "java_rmi" or "wcf". */
+  public static final StringAttributeSetter RPC_SYSTEM = StringAttributeSetter.create("rpc.system");
+  /** The full name of the service being called, including its package name, if applicable. */
   public static final StringAttributeSetter RPC_SERVICE =
       StringAttributeSetter.create("rpc.service");
-  /** RPC span event attribute with value "SENT" or "RECEIVED". */
-  public static final StringAttributeSetter MESSAGE_TYPE =
+  /* The name of the method being called, must be equal to the $method part in the span name */
+  public static final StringAttributeSetter RPC_METHOD = StringAttributeSetter.create("rpc.method");
+
+  /** The name of a gRPC span event to populate for each message sent / received. */
+  public static final String GRPC_MESSAGE_EVENT_NAME = "message";
+  /** gRPC span event attribute with value "SENT" or "RECEIVED". */
+  public static final StringAttributeSetter GRPC_MESSAGE_TYPE =
       StringAttributeSetter.create("message.type");
-  /** RPC span event attribute starting from 1 for each of sent messages and received messages. */
-  public static final LongAttributeSetter MESSAGE_ID = LongAttributeSetter.create("message.id");
-  /** RPC span event attribute for compressed size. */
-  public static final LongAttributeSetter MESSAGE_COMPRESSED_SIZE =
+  /** gRPC span event attribute starting from 1 for each of sent messages and received messages. */
+  public static final LongAttributeSetter GRPC_MESSAGE_ID =
+      LongAttributeSetter.create("message.id");
+  /** gRPC span event attribute for compressed size of a message. */
+  public static final LongAttributeSetter GRPC_MESSAGE_COMPRESSED_SIZE =
       LongAttributeSetter.create("message.compressed_size");
-  /** RPC span event attribute for uncompressed size. */
-  public static final LongAttributeSetter MESSAGE_UNCOMPRESSED_SIZE =
+  /** gRPC span event attribute for uncompressed size of a message. */
+  public static final LongAttributeSetter GRPC_MESSAGE_UNCOMPRESSED_SIZE =
       LongAttributeSetter.create("message.uncompressed_size");
-  /** Database type. For any SQL database, "sql". For others, the lower-case database category. */
-  public static final StringAttributeSetter DB_TYPE = StringAttributeSetter.create("db.type");
-  /** Database instance name. */
-  public static final StringAttributeSetter DB_INSTANCE =
-      StringAttributeSetter.create("db.instance");
+
+  /**
+   * An identifier for the database management system (DBMS) product being used.
+   *
+   * @see <a
+   *     href="https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/trace/semantic_conventions/database.md#notes-and-well-known-identifiers-for-dbsystem">A
+   *     list of well-known identifiers</a>
+   */
+  public static final StringAttributeSetter DB_SYSTEM = StringAttributeSetter.create("db.system");
+  /** Database name. */
+  public static final StringAttributeSetter DB_NAME = StringAttributeSetter.create("db.name");
+  /**
+   * The connection string used to connect to the database. It's recommended to remove embedded
+   * credentials. This will replace db.url.
+   */
+  public static final StringAttributeSetter DB_CONNECTION_STRING =
+      StringAttributeSetter.create("db.connection_string");
   /** Database statement for the given database type. */
   public static final StringAttributeSetter DB_STATEMENT =
       StringAttributeSetter.create("db.statement");
+  /** Database operation that is being executed. */
+  public static final StringAttributeSetter DB_OPERATION =
+      StringAttributeSetter.create("db.operation");
   /** Username for accessing database. */
   public static final StringAttributeSetter DB_USER = StringAttributeSetter.create("db.user");
-  /** JDBC substring like "mysql://db.example.com:3306" */
-  public static final StringAttributeSetter DB_URL = StringAttributeSetter.create("db.url");
+
+  /**
+   * For db.system == mssql, the instance name connecting to. This name is used to determine the
+   * port of a named instance. When set, {@link #NET_PEER_PORT} is not required, but recommended
+   * when connecting to a non-standard port.
+   */
+  public static final StringAttributeSetter MSSQL_SQL_SERVER =
+      StringAttributeSetter.create("db.mssql.instance_name");
+  /**
+   * For JDBC clients, the fully-qualified class name of the Java Database Connectivity (JDBC)
+   * driver used to connect, e.g. "org.postgresql.Driver" or
+   * "com.microsoft.sqlserver.jdbc.SQLServerDriver".
+   */
+  public static final StringAttributeSetter JDBC_DRIVER_CLASSNAME =
+      StringAttributeSetter.create("db.jdbc.driver_classname");
+
+  /**
+   * For db.system == cassandra, the name of the keyspace being accessed. To be used instead of the
+   * generic db.name attribute.
+   */
+  public static final StringAttributeSetter CASSANDRA_KEYSPACE =
+      StringAttributeSetter.create("db.cassandra.keyspace");
+  /**
+   * For db.system == hbase, the namespace being accessed. To be used instead of the generic db.name
+   * attribute.
+   */
+  public static final StringAttributeSetter HBASE_NAMESPACE =
+      StringAttributeSetter.create("db.hbase.namespace");
+  /**
+   * For db.system == redis, the index of the database being accessed as used in the SELECT command,
+   * provided as an integer. To be used instead of the generic db.name attribute.
+   */
+  public static final StringAttributeSetter REDIS_DATABASE_INDEX =
+      StringAttributeSetter.create("db.redis.database_index");
+  /**
+   * For db.system == mongodb, the collection being accessed within the database stated in db.name
+   */
+  public static final StringAttributeSetter MONGODB_COLLECTION =
+      StringAttributeSetter.create("db.mongodb.collection");
+
+  /** A string identifying the messaging system such as kafka, rabbitmq or activemq. */
+  public static final StringAttributeSetter MESSAGING_SYSTEM =
+      StringAttributeSetter.create("messaging.system");
+  /**
+   * The message destination name, e.g. MyQueue or MyTopic. This might be equal to the span name but
+   * is required nevertheless
+   */
+  public static final StringAttributeSetter MESSAGING_DESTINATION =
+      StringAttributeSetter.create("messaging.destination");
+  /** The kind of message destination. Either queue or topic. */
+  public static final StringAttributeSetter MESSAGING_DESTINATION_KIND =
+      StringAttributeSetter.create("messaging.destination_kind");
+  /** A boolean that is true if the message destination is temporary. */
+  public static final BooleanAttributeSetter MESSAGING_TEMP_DESTINATION =
+      BooleanAttributeSetter.create("messaging.temp_destination");
+  /** The name of the transport protocol such as AMQP or MQTT. */
+  public static final StringAttributeSetter MESSAGING_PROTOCOL =
+      StringAttributeSetter.create("messaging.protocol");
+  /** The version of the transport protocol such as 0.9.1. */
+  public static final StringAttributeSetter MESSAGING_PROTOCOL_VERSION =
+      StringAttributeSetter.create("messaging.protocol_version");
+  /**
+   * Connection string such as tibjmsnaming://localhost:7222 or
+   * https://queue.amazonaws.com/80398EXAMPLE/MyQueue
+   */
+  public static final StringAttributeSetter MESSAGING_URL =
+      StringAttributeSetter.create("messaging.url");
+  /**
+   * A value used by the messaging system as an identifier for the message, represented as a string.
+   */
+  public static final StringAttributeSetter MESSAGING_MESSAGE_ID =
+      StringAttributeSetter.create("messaging.message_id");
+  /**
+   * A value identifying the conversation to which the message belongs, represented as a string.
+   * Sometimes called "Correlation ID".
+   */
+  public static final StringAttributeSetter MESSAGING_CONVERSATION_ID =
+      StringAttributeSetter.create("messaging.conversation_id");
+  /**
+   * The (uncompressed) size of the message payload in bytes. Also use this attribute if it is
+   * unknown whether the compressed or uncompressed payload size is reported.
+   */
+  public static final LongAttributeSetter MESSAGING_MESSAGE_PAYLOAD_SIZE_BYTES =
+      LongAttributeSetter.create("messaging.message_payload_size_bytes");
+  /** The compressed size of the message payload in bytes. */
+  public static final LongAttributeSetter MESSAGING_MESSAGE_PAYLOAD_COMPRESSED_SIZE_BYTES =
+      LongAttributeSetter.create("messaging.message_payload_compressed_size_bytes");
+  /**
+   * A string identifying which part and kind of message consumption this span describes: either
+   * "receive" or "process". If the operation is "send", this attribute must not be set: the
+   * operation can be inferred from the span kind in that case.
+   */
+  public static final StringAttributeSetter MESSAGING_OPERATION =
+      StringAttributeSetter.create("messaging.operation");
+
+  /** The name of an {@link io.opentelemetry.trace.Event} describing an exception. */
+  public static final String EXCEPTION_EVENT_NAME = "exception";
+  /** The type of the exception, i.e., it's fully qualified name. */
+  public static final StringAttributeSetter EXCEPTION_TYPE =
+      StringAttributeSetter.create("exception.type");
+  /** The exception message. */
+  public static final StringAttributeSetter EXCEPTION_MESSAGE =
+      StringAttributeSetter.create("exception.message");
+  /**
+   * A string representing the stacktrace of an exception, as produced by {@link
+   * Throwable#printStackTrace()}.
+   */
+  public static final StringAttributeSetter EXCEPTION_STACKTRACE =
+      StringAttributeSetter.create("exception.stacktrace");
+
+  /** Id of the thread that has started a span, as produced by {@link Thread#getId()}. */
+  public static final LongAttributeSetter THREAD_ID = LongAttributeSetter.create("thread.id");
+  /** Name of the thread that has started a span, as produced by {@link Thread#getName()}. */
+  public static final StringAttributeSetter THREAD_NAME =
+      StringAttributeSetter.create("thread.name");
 
   private SemanticAttributes() {}
 }

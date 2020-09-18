@@ -16,7 +16,7 @@
 
 package io.opentelemetry.exporters.logging;
 
-import static com.google.common.truth.Truth.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import io.opentelemetry.common.AttributeValue;
 import io.opentelemetry.common.Attributes;
@@ -24,7 +24,6 @@ import io.opentelemetry.common.Labels;
 import io.opentelemetry.sdk.common.InstrumentationLibraryInfo;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.metrics.data.MetricData.Descriptor;
-import io.opentelemetry.sdk.metrics.data.MetricData.Descriptor.Type;
 import io.opentelemetry.sdk.metrics.data.MetricData.DoublePoint;
 import io.opentelemetry.sdk.metrics.data.MetricData.LongPoint;
 import io.opentelemetry.sdk.metrics.data.MetricData.SummaryPoint;
@@ -36,27 +35,27 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 import java.util.logging.StreamHandler;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /** Tests for the {@link LoggingMetricExporter}. */
-public class LoggingMetricExporterTest {
+class LoggingMetricExporterTest {
 
   LoggingMetricExporter exporter;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     exporter = new LoggingMetricExporter();
   }
 
-  @After
-  public void tearDown() {
+  @AfterEach
+  void tearDown() {
     exporter.shutdown();
   }
 
   @Test
-  public void testExport() {
+  void testExport() {
 
     long nowEpochNanos = System.currentTimeMillis() * 1000 * 1000;
     Resource resource =
@@ -70,7 +69,7 @@ public class LoggingMetricExporterTest {
                     "measureOne",
                     "A summarized test measure",
                     "ms",
-                    Type.SUMMARY,
+                    Descriptor.Type.SUMMARY,
                     Labels.of("foo", "bar", "baz", "zoom")),
                 resource,
                 instrumentationLibraryInfo,
@@ -89,7 +88,7 @@ public class LoggingMetricExporterTest {
                     "counterOne",
                     "A simple counter",
                     "one",
-                    Type.MONOTONIC_LONG,
+                    Descriptor.Type.MONOTONIC_LONG,
                     Labels.of("alpha", "aleph", "beta", "bet")),
                 resource,
                 instrumentationLibraryInfo,
@@ -101,7 +100,7 @@ public class LoggingMetricExporterTest {
                     "observedValue",
                     "an observer gauge",
                     "kb",
-                    Type.NON_MONOTONIC_DOUBLE,
+                    Descriptor.Type.NON_MONOTONIC_DOUBLE,
                     Labels.of("uno", "eins", "dos", "zwei")),
                 resource,
                 instrumentationLibraryInfo,
@@ -114,7 +113,7 @@ public class LoggingMetricExporterTest {
   }
 
   @Test
-  public void testFlush() {
+  void testFlush() {
     final AtomicBoolean flushed = new AtomicBoolean(false);
     Logger.getLogger(LoggingMetricExporter.class.getName())
         .addHandler(

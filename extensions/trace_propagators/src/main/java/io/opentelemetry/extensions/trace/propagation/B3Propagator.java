@@ -17,9 +17,7 @@
 package io.opentelemetry.extensions.trace.propagation;
 
 import io.grpc.Context;
-import io.opentelemetry.context.propagation.HttpTextFormat;
-import io.opentelemetry.trace.SpanId;
-import io.opentelemetry.trace.TraceId;
+import io.opentelemetry.context.propagation.TextMapPropagator;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -30,16 +28,12 @@ import javax.annotation.concurrent.Immutable;
  * href=https://github.com/openzipkin/b3-propagation>openzipkin/b3-propagation</a>.
  */
 @Immutable
-public class B3Propagator implements HttpTextFormat {
+public class B3Propagator implements TextMapPropagator {
   static final String TRACE_ID_HEADER = "X-B3-TraceId";
   static final String SPAN_ID_HEADER = "X-B3-SpanId";
   static final String SAMPLED_HEADER = "X-B3-Sampled";
-  static final String TRUE_INT = "1";
-  static final String FALSE_INT = "0";
   static final String COMBINED_HEADER = "b3";
   static final String COMBINED_HEADER_DELIMITER = "-";
-  static final int MAX_TRACE_ID_LENGTH = 2 * TraceId.getSize();
-  static final int MAX_SPAN_ID_LENGTH = 2 * SpanId.getSize();
 
   static final char COMBINED_HEADER_DELIMITER_CHAR = '-';
   static final char IS_SAMPLED = '1';

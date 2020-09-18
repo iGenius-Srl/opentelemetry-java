@@ -16,14 +16,15 @@
 
 package io.opentelemetry.extensions.trace.propagation;
 
-import static com.google.common.truth.Truth.assertThat;
 import static io.opentelemetry.trace.TracingContextUtils.getSpan;
 import static io.opentelemetry.trace.TracingContextUtils.withSpan;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import io.grpc.Context;
-import io.opentelemetry.context.propagation.HttpTextFormat;
+import io.opentelemetry.context.propagation.TextMapPropagator;
 import io.opentelemetry.trace.DefaultSpan;
 import io.opentelemetry.trace.Span;
 import io.opentelemetry.trace.SpanContext;
@@ -36,20 +37,15 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 
-@RunWith(JUnit4.class)
-public class TraceMultiPropagatorTest {
-  private static final HttpTextFormat PROPAGATOR1 = B3Propagator.getSingleHeaderPropagator();
-  private static final HttpTextFormat PROPAGATOR2 = B3Propagator.getMultipleHeaderPropagator();
-  private static final HttpTextFormat PROPAGATOR3 = new HttpTraceContext();
+class TraceMultiPropagatorTest {
+  private static final TextMapPropagator PROPAGATOR1 = B3Propagator.getSingleHeaderPropagator();
+  private static final TextMapPropagator PROPAGATOR2 = B3Propagator.getMultipleHeaderPropagator();
+  private static final TextMapPropagator PROPAGATOR3 = new HttpTraceContext();
 
   private static final Span SPAN =
       DefaultSpan.create(
@@ -59,22 +55,20 @@ public class TraceMultiPropagatorTest {
               TraceFlags.getDefault(),
               TraceState.getDefault()));
 
-  @Rule public ExpectedException thrown = ExpectedException.none();
-
-  @Before
-  public void init() {
+  @BeforeEach
+  void init() {
     MockitoAnnotations.initMocks(this);
   }
 
   @Test
-  public void addPropagator_null() {
-    thrown.expect(NullPointerException.class);
-    TraceMultiPropagator.builder().addPropagator(null);
+  void addPropagator_null() {
+    assertThrows(
+        NullPointerException.class, () -> TraceMultiPropagator.builder().addPropagator(null));
   }
 
   @Test
-  public void fields() {
-    HttpTextFormat prop =
+  void fields() {
+    TextMapPropagator prop =
         TraceMultiPropagator.builder()
             .addPropagator(new EmptyPropagator("foo", "bar"))
             .addPropagator(new EmptyPropagator("hello", "world"))
@@ -86,21 +80,20 @@ public class TraceMultiPropagatorTest {
   }
 
   @Test
-  public void fields_readOnly() {
-    HttpTextFormat prop =
+  void fields_readOnly() {
+    TextMapPropagator prop =
         TraceMultiPropagator.builder()
             .addPropagator(new EmptyPropagator("foo", "bar"))
             .addPropagator(new EmptyPropagator("hello", "world"))
             .build();
 
     List<String> fields = prop.fields();
-    thrown.expect(UnsupportedOperationException.class);
-    fields.add("hi");
+    assertThrows(UnsupportedOperationException.class, () -> fields.add("hi"));
   }
 
   @Test
-  public void inject_noPropagators() {
-    HttpTextFormat prop = TraceMultiPropagator.builder().build();
+  void inject_noPropagators() {
+    TextMapPropagator prop = TraceMultiPropagator.builder().build();
     Map<String, String> carrier = new HashMap<>();
 
     Context context = Context.current();
@@ -109,8 +102,8 @@ public class TraceMultiPropagatorTest {
   }
 
   @Test
-  public void inject_allFormats() {
-    HttpTextFormat prop =
+  void inject_allFormats() {
+    TextMapPropagator prop =
         TraceMultiPropagator.builder()
             .addPropagator(PROPAGATOR1)
             .addPropagator(PROPAGATOR2)
@@ -129,18 +122,18 @@ public class TraceMultiPropagatorTest {
   }
 
   @Test
-  public void extract_noPropagators() {
-    HttpTextFormat prop = TraceMultiPropagator.builder().build();
+  void extract_noPropagators() {
+    TextMapPropagator prop = TraceMultiPropagator.builder().build();
     Map<String, String> carrier = new HashMap<>();
 
     Context context = Context.current();
     Context resContext = prop.extract(context, carrier, Map::get);
-    assertThat(context).isSameInstanceAs(resContext);
+    assertThat(context).isSameAs(resContext);
   }
 
   @Test
-  public void extract_found() {
-    HttpTextFormat prop =
+  void extract_found() {
+    TextMapPropagator prop =
         TraceMultiPropagator.builder()
             .addPropagator(PROPAGATOR1)
             .addPropagator(PROPAGATOR2)
@@ -154,8 +147,8 @@ public class TraceMultiPropagatorTest {
   }
 
   @Test
-  public void extract_notFound() {
-    HttpTextFormat prop = TraceMultiPropagator.builder().addPropagator(PROPAGATOR1).build();
+  void extract_notFound() {
+    TextMapPropagator prop = TraceMultiPropagator.builder().addPropagator(PROPAGATOR1).build();
 
     Map<String, String> carrier = new HashMap<>();
     PROPAGATOR3.inject(withSpan(SPAN, Context.current()), carrier, Map::put);
@@ -163,9 +156,9 @@ public class TraceMultiPropagatorTest {
   }
 
   @Test
-  public void extract_stopWhenFound() {
-    HttpTextFormat mockPropagator = Mockito.mock(HttpTextFormat.class);
-    HttpTextFormat prop =
+  void extract_stopWhenFound() {
+    TextMapPropagator mockPropagator = Mockito.mock(TextMapPropagator.class);
+    TextMapPropagator prop =
         TraceMultiPropagator.builder()
             .addPropagator(mockPropagator)
             .addPropagator(PROPAGATOR3)
@@ -179,7 +172,7 @@ public class TraceMultiPropagatorTest {
     verifyNoMoreInteractions(mockPropagator);
   }
 
-  private static class EmptyPropagator implements HttpTextFormat {
+  private static class EmptyPropagator implements TextMapPropagator {
     List<String> fields;
 
     public EmptyPropagator(String... fields) {

@@ -16,26 +16,24 @@
 
 package io.opentelemetry.common;
 
-import static com.google.common.truth.Truth.assertThat;
 import static io.opentelemetry.common.AttributeValue.arrayAttributeValue;
 import static io.opentelemetry.common.AttributeValue.booleanAttributeValue;
 import static io.opentelemetry.common.AttributeValue.doubleAttributeValue;
 import static io.opentelemetry.common.AttributeValue.longAttributeValue;
 import static io.opentelemetry.common.AttributeValue.stringAttributeValue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.Test;
 
 /** Unit tests for {@link Attributes}s. */
-public class AttributesTest {
-  @Rule public final ExpectedException thrown = ExpectedException.none();
+class AttributesTest {
 
   @Test
-  public void forEach() {
+  void forEach() {
     final Map<String, AttributeValue> entriesSeen = new HashMap<>();
 
     Attributes attributes =
@@ -46,20 +44,21 @@ public class AttributesTest {
     attributes.forEach(entriesSeen::put);
 
     assertThat(entriesSeen)
-        .containsExactly("key1", stringAttributeValue("value1"), "key2", longAttributeValue(333));
+        .containsExactly(
+            entry("key1", stringAttributeValue("value1")), entry("key2", longAttributeValue(333)));
   }
 
   @Test
-  public void forEach_singleAttribute() {
+  void forEach_singleAttribute() {
     final Map<String, AttributeValue> entriesSeen = new HashMap<>();
 
     Attributes attributes = Attributes.of("key", stringAttributeValue("value"));
     attributes.forEach(entriesSeen::put);
-    assertThat(entriesSeen).containsExactly("key", stringAttributeValue("value"));
+    assertThat(entriesSeen).containsExactly(entry("key", stringAttributeValue("value")));
   }
 
   @Test
-  public void forEach_empty() {
+  void forEach_empty() {
     final AtomicBoolean sawSomething = new AtomicBoolean(false);
     Attributes emptyAttributes = Attributes.empty();
     emptyAttributes.forEach((key, value) -> sawSomething.set(true));
@@ -67,7 +66,7 @@ public class AttributesTest {
   }
 
   @Test
-  public void orderIndependentEquality() {
+  void orderIndependentEquality() {
     Attributes one =
         Attributes.of(
             "key1", stringAttributeValue("value1"),
@@ -78,10 +77,32 @@ public class AttributesTest {
             "key1", stringAttributeValue("value1"));
 
     assertThat(one).isEqualTo(two);
+
+    Attributes three =
+        Attributes.of(
+            "key1", stringAttributeValue("value1"),
+            "key2", stringAttributeValue("value2"),
+            "", stringAttributeValue("empty"),
+            "key3", stringAttributeValue("value3"),
+            "key4", stringAttributeValue("value4"));
+    Attributes four =
+        Attributes.of(
+            null,
+            stringAttributeValue("null"),
+            "key2",
+            stringAttributeValue("value2"),
+            "key1",
+            stringAttributeValue("value1"),
+            "key4",
+            stringAttributeValue("value4"),
+            "key3",
+            stringAttributeValue("value3"));
+
+    assertThat(three).isEqualTo(four);
   }
 
   @Test
-  public void deduplication() {
+  void deduplication() {
     Attributes one =
         Attributes.of(
             "key1", stringAttributeValue("value1"),
@@ -92,7 +113,15 @@ public class AttributesTest {
   }
 
   @Test
-  public void builder() {
+  void emptyAndNullKey() {
+    Attributes noAttributes =
+        Attributes.of("", stringAttributeValue("empty"), null, stringAttributeValue("null"));
+
+    assertThat(noAttributes.size()).isEqualTo(0);
+  }
+
+  @Test
+  void builder() {
     Attributes attributes =
         Attributes.newBuilder()
             .setAttribute("string", "value1")
@@ -102,17 +131,30 @@ public class AttributesTest {
             .setAttribute("boolean", "duplicateShouldBeRemoved")
             .build();
 
-    assertThat(attributes)
+    Attributes wantAttributes =
+        Attributes.of(
+            "string", stringAttributeValue("value1"),
+            "long", longAttributeValue(100),
+            "double", doubleAttributeValue(33.44),
+            "boolean", booleanAttributeValue(false));
+    assertThat(attributes).isEqualTo(wantAttributes);
+
+    Attributes.Builder newAttributes = Attributes.newBuilder(attributes);
+    newAttributes.setAttribute("newKey", "newValue");
+    assertThat(newAttributes.build())
         .isEqualTo(
             Attributes.of(
                 "string", stringAttributeValue("value1"),
                 "long", longAttributeValue(100),
                 "double", doubleAttributeValue(33.44),
-                "boolean", booleanAttributeValue(false)));
+                "boolean", booleanAttributeValue(false),
+                "newKey", stringAttributeValue("newValue")));
+    // Original not mutated.
+    assertThat(attributes).isEqualTo(wantAttributes);
   }
 
   @Test
-  public void builder_arrayTypes() {
+  void builder_arrayTypes() {
     Attributes attributes =
         Attributes.newBuilder()
             .setAttribute("string", "value1", "value2")
@@ -133,13 +175,13 @@ public class AttributesTest {
   }
 
   @Test
-  public void get_Null() {
+  void get_Null() {
     assertThat(Attributes.empty().get("foo")).isNull();
     assertThat(Attributes.of("key", stringAttributeValue("value")).get("foo")).isNull();
   }
 
   @Test
-  public void get() {
+  void get() {
     assertThat(Attributes.of("key", stringAttributeValue("value")).get("key"))
         .isEqualTo(stringAttributeValue("value"));
     assertThat(Attributes.of("key", stringAttributeValue("value")).get("value")).isNull();
@@ -167,5 +209,49 @@ public class AttributesTest {
     assertThat(threeElements.get("boolean")).isEqualTo(booleanAttributeValue(true));
     assertThat(threeElements.get("string")).isEqualTo(stringAttributeValue("value"));
     assertThat(threeElements.get("long")).isEqualTo(longAttributeValue(1L));
+  }
+
+  @Test
+  void toBuilder() {
+    Attributes filled =
+        Attributes.newBuilder().setAttribute("cat", "meow").setAttribute("dog", "bark").build();
+
+    Attributes fromEmpty =
+        Attributes.empty()
+            .toBuilder()
+            .setAttribute("cat", "meow")
+            .setAttribute("dog", "bark")
+            .build();
+    assertThat(fromEmpty).isEqualTo(filled);
+    // Original not mutated.
+    assertThat(Attributes.empty().isEmpty()).isTrue();
+
+    Attributes partial = Attributes.newBuilder().setAttribute("cat", "meow").build();
+    Attributes fromPartial = partial.toBuilder().setAttribute("dog", "bark").build();
+    assertThat(fromPartial).isEqualTo(filled);
+    // Original not mutated.
+    assertThat(partial).isEqualTo(Attributes.newBuilder().setAttribute("cat", "meow").build());
+  }
+
+  @Test
+  void deleteByNull() {
+    Attributes.Builder attributes = Attributes.newBuilder();
+    attributes.setAttribute("attrValue", AttributeValue.stringAttributeValue("attrValue"));
+    attributes.setAttribute("string", "string");
+    attributes.setAttribute("long", 10);
+    attributes.setAttribute("double", 1.0);
+    attributes.setAttribute("bool", true);
+    attributes.setAttribute("arrayString", new String[] {"string"});
+    attributes.setAttribute("arrayLong", new Long[] {10L});
+    attributes.setAttribute("arrayDouble", new Double[] {1.0});
+    attributes.setAttribute("arrayBool", new Boolean[] {true});
+    assertThat(attributes.build().size()).isEqualTo(9);
+    attributes.setAttribute("attrValue", (AttributeValue) null);
+    attributes.setAttribute("string", (String) null);
+    attributes.setAttribute("arrayString", (String[]) null);
+    attributes.setAttribute("arrayLong", (Long[]) null);
+    attributes.setAttribute("arrayDouble", (Double[]) null);
+    attributes.setAttribute("arrayBool", (Boolean[]) null);
+    assertThat(attributes.build().size()).isEqualTo(3);
   }
 }

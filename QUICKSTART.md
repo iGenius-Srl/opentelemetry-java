@@ -16,6 +16,9 @@
   * [Sampler](#sampler)
   * [Span Processor](#span-processor)
   * [Exporter](#exporter)
+  * [TraceConfig](#traceconfig)
+- [Logging And Error Handling](#logging-and-error-handling)
+  * [Examples](#examples)
 <!-- tocstop -->
 
 OpenTelemetry can be used to instrument code for collecting telemetry data. For more details, check
@@ -175,8 +178,8 @@ The following presents an example of an outgoing HTTP request using `HttpURLConn
  
 ```java
 // Tell OpenTelemetry to inject the context in the HTTP headers
-HttpTextFormat.Setter<HttpURLConnection> setter =
-  new HttpTextFormat.Setter<HttpURLConnection>() {
+TextMapPropagator.Setter<HttpURLConnection> setter =
+  new TextMapPropagator.Setter<HttpURLConnection>() {
     @Override
     public void put(HttpURLConnection carrier, String key, String value) {
         // Insert the context as Header
@@ -193,7 +196,7 @@ try (Scope scope = tracer.withSpan(outGoing)) {
   outGoing.setAttribute("http.url", url.toString());
   HttpURLConnection transportLayer = (HttpURLConnection) url.openConnection();
   // Inject the request with the *current*  Context, which contains our current Span.
-  OpenTelemetry.getPropagators().getHttpTextFormat().inject(Context.current(), transportLayer, setter);
+  OpenTelemetry.getPropagators().getTextMapPropagator().inject(Context.current(), transportLayer, setter);
   // Make outgoing call
 } finally {
   outGoing.end();
@@ -206,8 +209,8 @@ The following presents an example of processing an incoming HTTP request using
 [HttpExchange](https://docs.oracle.com/javase/8/docs/jre/api/net/httpserver/spec/com/sun/net/httpserver/HttpExchange.html).
 
 ```java
-HttpTextFormat.Getter<HttpExchange> getter =
-  new HttpTextFormat.Getter<HttpExchange>() {
+TextMapPropagator.Getter<HttpExchange> getter =
+  new TextMapPropagator.Getter<HttpExchange>() {
     @Override
     public String get(HttpExchange carrier, String key) {
       if (carrier.getRequestHeaders().containsKey(key)) {
@@ -219,7 +222,7 @@ HttpTextFormat.Getter<HttpExchange> getter =
 ...
 public void handle(HttpExchange httpExchange) {
   // Extract the SpanContext and other elements from the request.
-  Context extractedContext = OpenTelemetry.getPropagators().getHttpTextFormat()
+  Context extractedContext = OpenTelemetry.getPropagators().getTextMapPropagator()
         .extract(Context.current(), httpExchange, getter);
   Span serverSpan = null;
   try (Scope scope = ContextUtils.withScopedContext(extractedContext)) {
@@ -266,14 +269,14 @@ LongCounter counter = meter
 
 // It is recommended that the API user keep a reference to a Bound Counter for the entire time or 
 // call unbind when no-longer needed.
-BoundLongCounter someWorkCounter = counter.bind("Key", "SomeWork");
+BoundLongCounter someWorkCounter = counter.bind(Labels.of("Key", "SomeWork"));
 
 // Record data
 someWorkCounter.add(123);
 
 // Alternatively, the user can use the unbounded counter and explicitly
 // specify the labels set at call-time:
-counter.add(123, "Key", "SomeWork");
+counter.add(123, Labels.of("Key", "SomeWork"));
 ```
 
 `Observer` is an additional instrument supporting an asynchronous API and
@@ -294,7 +297,7 @@ observer.setCallback(
           @Override
           public void update(ResultLongObserver result) {
             // long getCpuUsage()
-            result.observe(getCpuUsage(), "Key", "SomeWork");
+            result.observe(getCpuUsage(), Labels.of("Key", "SomeWork"));
           }
         });
 ```
@@ -400,6 +403,43 @@ tracerProvider.addSpanProcessor(BatchSpanProcessor.newBuilder(
 ).build());
 ```
 
+### TraceConfig
+
+The `TraceConfig` associated with a `TracerSdkProvider` can be updated via system properties, 
+environment variables and builder `set*` methods.  
+
+```java
+// Get TraceConfig associated with TracerSdkProvider 
+TraceConfig traceConfig = OpenTelemetrySdk.getTracerProvider().getActiveTraceConfig();
+
+// Get TraceConfig Builder
+Builder builder = traceConfig.toBuilder();
+
+// Read configuration options from system properties
+builder.readSystemProperties();
+
+// Read configuration options from environment variables
+builder.readEnvironmentVariables()
+
+// Set options via builder.set* methods, e.g.
+builder.setMaxNumberOfLinks(10);
+
+// Update the resulting TraceConfig instance
+OpenTelemetrySdk.getTracerProvider().updateActiveTraceConfig(builder.build());
+```
+
+Supported system properties and environment variables:
+
+| System property                  | Environment variable             | Purpose                                                                                             | 
+|----------------------------------|----------------------------------|-----------------------------------------------------------------------------------------------------|       
+| otel.config.sampler.probability  | OTEL_CONFIG_SAMPLER_PROBABILITY  | Sampler which is used when constructing a new span (default: 1)                                     |                        
+| otel.config.max.attrs            | OTEL_CONFIG_MAX_ATTRS            | Max number of attributes per span, extra will be dropped (default: 32)                              |                        
+| otel.config.max.events           | OTEL_CONFIG_MAX_EVENTS           | Max number of Events per span, extra will be dropped (default: 128)                                 |                        
+| otel.config.max.links            | OTEL_CONFIG_MAX_LINKS            | Max number of Link entries per span, extra will be dropped (default: 32)                            |
+| otel.config.max.event.attrs      | OTEL_CONFIG_MAX_EVENT_ATTRS      | Max number of attributes per event, extra will be dropped (default: 32)                             |
+| otel.config.max.link.attrs       | OTEL_CONFIG_MAX_LINK_ATTRS       | Max number of attributes per link, extra will be dropped  (default: 32)                             |
+| otel.config.max.attr.length      | OTEL_CONFIG_MAX_ATTR_LENGTH      | Max length of string attribute value in characters, too long will be truncated (default: unlimited) |
+
 [AlwaysOnSampler]: https://github.com/open-telemetry/opentelemetry-java/blob/master/sdk/src/main/java/io/opentelemetry/sdk/trace/Samplers.java#L82--L105
 [AlwaysOffSampler]:https://github.com/open-telemetry/opentelemetry-java/blob/master/sdk/src/main/java/io/opentelemetry/sdk/trace/Samplers.java#L108--L131
 [Probability]:https://github.com/open-telemetry/opentelemetry-java/blob/master/sdk/src/main/java/io/opentelemetry/sdk/trace/Samplers.java#L142--L203
@@ -408,4 +448,60 @@ tracerProvider.addSpanProcessor(BatchSpanProcessor.newBuilder(
 [OpenTelemetry Registry]: https://opentelemetry.io/registry/?s=exporter
 [OpenTelemetry Website]: https://opentelemetry.io/
 [Obtaining a Tracer]: https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/trace/api.md#obtaining-a-tracer
-[Semantic Conventions]: https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/data-semantic-conventions.md
+[Semantic Conventions]: https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/trace/semantic_conventions
+
+## Logging and Error Handling 
+
+OpenTelemetry uses [java.util.logging](https://docs.oracle.com/javase/7/docs/api/java/util/logging/package-summary.html)
+to log information about OpenTelemetry, including errors and warnings about misconfigurations or failures exporting 
+data. 
+
+By default, log messages are handled by the root handler in your application. If you have not 
+installed a custom root handler for your application, logs of level `INFO` or higher are sent to the console by default. 
+
+You may 
+want to change the behavior of the logger for OpenTelemetry. For example, you can reduce the logging level 
+to output additional information when debugging, increase the level for a particular class to ignore errors coming 
+from that class, or install a custom handler or filter to run custom code whenever OpenTelemetry logs
+a particular message. 
+
+### Examples
+
+```properties
+## Turn off all OpenTelemetry logging 
+io.opentelemetry.level = OFF
+```
+
+```properties
+## Turn off logging for just the BatchSpanProcessor 
+io.opentelemetry.sdk.trace.export.BatchSpanProcessor.level = OFF
+```
+
+```properties
+## Log "FINE" messages for help in debugging 
+io.opentelemetry.level = FINE
+
+## Sets the default ConsoleHandler's logger's level 
+## Note this impacts the logging outside of OpenTelemetry as well 
+java.util.logging.ConsoleHandler.level = FINE
+
+```
+
+For more fine-grained control and special case handling, custom handlers and filters can be specified
+with code. 
+
+```java
+// Custom filter which does not log errors that come from the export
+public class IgnoreExportErrorsFilter implements Filter {
+
+ public boolean isLoggable(LogRecord record) {
+    return !record.getMessage().contains("Exception thrown by the export");
+ }
+}
+```
+
+```properties
+## Registering the custom filter on the BatchSpanProcessor
+io.opentelemetry.sdk.trace.export.BatchSpanProcessor = io.opentelemetry.extensions.logging.IgnoreExportErrorsFilter
+```
+

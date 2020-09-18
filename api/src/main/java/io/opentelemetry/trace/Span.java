@@ -16,6 +16,7 @@
 
 package io.opentelemetry.trace;
 
+import io.grpc.Context;
 import io.opentelemetry.common.AttributeValue;
 import io.opentelemetry.common.Attributes;
 import javax.annotation.Nullable;
@@ -134,7 +135,7 @@ public interface Span {
   void setAttribute(String key, AttributeValue value);
 
   /**
-   * Adds an event to the {@code Span}.
+   * Adds an event to the {@link Span}. The timestamp of the {@link Event} will be the current time.
    *
    * @param name the name of the event.
    * @since 0.1.0
@@ -142,12 +143,13 @@ public interface Span {
   void addEvent(String name);
 
   /**
-   * Adds an event to the {@code Span}.
+   * Adds an event to the {@link Span} with the given {@code timestamp}, as nanos since epoch. Note,
+   * this {@code timestamp} is not the same as {@link System#nanoTime()} but may be computed using
+   * it, for example, by taking a difference of readings from {@link System#nanoTime()} and adding
+   * to the span start time.
    *
-   * <p>Use this method to specify an explicit event timestamp. If not called, the implementation
-   * will use the current timestamp value, which should be the default case.
-   *
-   * <p>Important: this is NOT equivalent with System.nanoTime().
+   * <p>When possible, it is preferred to use {@link #addEvent(String)} at the time the event
+   * occurred.
    *
    * @param name the name of the event.
    * @param timestamp the explicit event timestamp in nanos since epoch.
@@ -156,7 +158,8 @@ public interface Span {
   void addEvent(String name, long timestamp);
 
   /**
-   * Adds an event to the {@code Span}.
+   * Adds an event to the {@link Span} with the given {@link Attributes}. The timestamp of the *
+   * {@link Event} will be the current time.
    *
    * @param name the name of the event.
    * @param attributes the attributes that will be added; these are associated with this event, not
@@ -166,12 +169,13 @@ public interface Span {
   void addEvent(String name, Attributes attributes);
 
   /**
-   * Adds an event to the {@code Span}.
+   * Adds an event to the {@link Span} with the given {@link Attributes} and {@code timestamp}.
+   * Note, this {@code timestamp} is not the same as {@link System#nanoTime()} but may be computed
+   * using it, for example, by taking a difference of readings from {@link System#nanoTime()} and
+   * adding to the span start time.
    *
-   * <p>Use this method to specify an explicit event timestamp. If not called, the implementation
-   * will use the current timestamp value, which should be the default case.
-   *
-   * <p>Important: this is NOT equivalent with System.nanoTime().
+   * <p>When possible, it is preferred to use {@link #addEvent(String)} at the time the event
+   * occurred.
    *
    * @param name the name of the event.
    * @param attributes the attributes that will be added; these are associated with this event, not
@@ -182,7 +186,7 @@ public interface Span {
   void addEvent(String name, Attributes attributes, long timestamp);
 
   /**
-   * Adds an event to the {@code Span}.
+   * Adds an event to the {@link Span}. The timestamp of the {@link Event} will be the current time.
    *
    * @param event the event to add.
    * @since 0.1.0
@@ -190,12 +194,13 @@ public interface Span {
   void addEvent(Event event);
 
   /**
-   * Adds an event to the {@code Span}.
+   * Adds an event to the {@link Span} with the given {@code timestamp}, as nanos since epoch. Note,
+   * this {@code timestamp} is not the same as {@link System#nanoTime()} but may be computed using
+   * it, for example, by taking a difference of readings from {@link System#nanoTime()} and adding
+   * to the span start time.
    *
-   * <p>Use this method to specify an explicit event timestamp. If not called, the implementation
-   * will use the current timestamp value, which should be the default case.
-   *
-   * <p>Important: this is NOT equivalent with System.nanoTime().
+   * <p>When possible, it is preferred to use {@link #addEvent(String)} at the time the event
+   * occurred.
    *
    * @param event the event to add.
    * @param timestamp the explicit event timestamp in nanos since epoch.
@@ -215,6 +220,23 @@ public interface Span {
    * @since 0.1.0
    */
   void setStatus(Status status);
+
+  /**
+   * Records information about the {@link Throwable} to the {@link Span}.
+   *
+   * @param exception the {@link Throwable} to record.
+   * @since 0.7.0
+   */
+  void recordException(Throwable exception);
+
+  /**
+   * Records information about the {@link Throwable} to the {@link Span}.
+   *
+   * @param exception the {@link Throwable} to record.
+   * @param additionalAttributes the additional {@link Attributes} to record.
+   * @since 0.8.0
+   */
+  void recordException(Throwable exception, Attributes additionalAttributes);
 
   /**
    * Updates the {@code Span} name.
@@ -405,6 +427,23 @@ public interface Span {
      * @since 0.1.0
      */
     Builder setParent(SpanContext remoteParent);
+
+    /**
+     * Sets the parent to use from the specified {@code Context}. If not set, the value of {@code
+     * Tracer.getCurrentSpan()} at {@link #startSpan()} time will be used as parent.
+     *
+     * <p>If no {@link Span} is available in the specified {@code Context}, the resulting {@code
+     * Span} will become a root instance, as if {@link #setNoParent()} had been called.
+     *
+     * <p>If called multiple times, only the last specified value will be used. Observe that the
+     * state defined by a previous call to {@link #setNoParent()} will be discarded.
+     *
+     * @param context the {@code Context}.
+     * @return this.
+     * @throws NullPointerException if {@code context} is {@code null}.
+     * @since 0.7.0
+     */
+    Builder setParent(Context context);
 
     /**
      * Sets the option to become a root {@code Span} for a new trace. If not set, the value of

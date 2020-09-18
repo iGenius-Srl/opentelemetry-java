@@ -21,7 +21,7 @@ import static io.opentelemetry.extensions.trace.propagation.B3Propagator.SPAN_ID
 import static io.opentelemetry.extensions.trace.propagation.B3Propagator.TRACE_ID_HEADER;
 
 import io.grpc.Context;
-import io.opentelemetry.context.propagation.HttpTextFormat;
+import io.opentelemetry.context.propagation.TextMapPropagator;
 import io.opentelemetry.trace.DefaultSpan;
 import io.opentelemetry.trace.SpanContext;
 import io.opentelemetry.trace.TracingContextUtils;
@@ -35,7 +35,7 @@ final class B3PropagatorExtractorMultipleHeaders implements B3PropagatorExtracto
       Logger.getLogger(B3PropagatorExtractorMultipleHeaders.class.getName());
 
   @Override
-  public <C> Context extract(Context context, C carrier, HttpTextFormat.Getter<C> getter) {
+  public <C> Context extract(Context context, C carrier, TextMapPropagator.Getter<C> getter) {
     Objects.requireNonNull(carrier, "carrier");
     Objects.requireNonNull(getter, "getter");
     SpanContext spanContext = getSpanContextFromMultipleHeaders(carrier, getter);
@@ -47,24 +47,24 @@ final class B3PropagatorExtractorMultipleHeaders implements B3PropagatorExtracto
   }
 
   private static <C> SpanContext getSpanContextFromMultipleHeaders(
-      C carrier, HttpTextFormat.Getter<C> getter) {
+      C carrier, TextMapPropagator.Getter<C> getter) {
     String traceId = getter.get(carrier, TRACE_ID_HEADER);
-    if (!Util.isTraceIdValid(traceId)) {
-      logger.info(
-          "Invalid TraceId in B3 header: "
-              + TRACE_ID_HEADER
-              + "'. Returning INVALID span context.");
+    if (StringUtils.isNullOrEmpty(traceId)) {
+      return SpanContext.getInvalid();
+    }
+    if (!Common.isTraceIdValid(traceId)) {
+      logger.fine(
+          "Invalid TraceId in B3 header: " + traceId + "'. Returning INVALID span context.");
       return SpanContext.getInvalid();
     }
 
     String spanId = getter.get(carrier, SPAN_ID_HEADER);
-    if (!Util.isSpanIdValid(spanId)) {
-      logger.info(
-          "Invalid SpanId in B3 header: " + SPAN_ID_HEADER + "'. Returning INVALID span context.");
+    if (!Common.isSpanIdValid(spanId)) {
+      logger.fine("Invalid SpanId in B3 header: " + spanId + "'. Returning INVALID span context.");
       return SpanContext.getInvalid();
     }
 
     String sampled = getter.get(carrier, SAMPLED_HEADER);
-    return Util.buildSpanContext(traceId, spanId, sampled);
+    return Common.buildSpanContext(traceId, spanId, sampled);
   }
 }

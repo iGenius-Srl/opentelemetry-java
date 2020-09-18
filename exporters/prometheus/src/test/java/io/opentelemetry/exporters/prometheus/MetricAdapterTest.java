@@ -16,7 +16,7 @@
 
 package io.opentelemetry.exporters.prometheus;
 
-import static com.google.common.truth.Truth.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.collect.ImmutableList;
 import io.opentelemetry.common.AttributeValue;
@@ -26,33 +26,31 @@ import io.opentelemetry.sdk.common.InstrumentationLibraryInfo;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.metrics.data.MetricData.Descriptor;
 import io.opentelemetry.sdk.resources.Resource;
+import io.prometheus.client.Collector;
 import io.prometheus.client.Collector.MetricFamilySamples;
 import io.prometheus.client.Collector.MetricFamilySamples.Sample;
-import io.prometheus.client.Collector.Type;
 import java.util.Collections;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.jupiter.api.Test;
 
 /** Unit tests for {@link MetricAdapter}. */
-@RunWith(JUnit4.class)
-public class MetricAdapterTest {
+class MetricAdapterTest {
 
   @Test
-  public void toProtoMetricDescriptorType() {
+  void toProtoMetricDescriptorType() {
     assertThat(MetricAdapter.toMetricFamilyType(Descriptor.Type.NON_MONOTONIC_DOUBLE))
-        .isEqualTo(Type.GAUGE);
+        .isEqualTo(Collector.Type.GAUGE);
     assertThat(MetricAdapter.toMetricFamilyType(Descriptor.Type.NON_MONOTONIC_LONG))
-        .isEqualTo(Type.GAUGE);
+        .isEqualTo(Collector.Type.GAUGE);
     assertThat(MetricAdapter.toMetricFamilyType(Descriptor.Type.MONOTONIC_DOUBLE))
-        .isEqualTo(Type.COUNTER);
+        .isEqualTo(Collector.Type.COUNTER);
     assertThat(MetricAdapter.toMetricFamilyType(Descriptor.Type.MONOTONIC_LONG))
-        .isEqualTo(Type.COUNTER);
-    assertThat(MetricAdapter.toMetricFamilyType(Descriptor.Type.SUMMARY)).isEqualTo(Type.SUMMARY);
+        .isEqualTo(Collector.Type.COUNTER);
+    assertThat(MetricAdapter.toMetricFamilyType(Descriptor.Type.SUMMARY))
+        .isEqualTo(Collector.Type.SUMMARY);
   }
 
   @Test
-  public void toSamples_LongPoints() {
+  void toSamples_LongPoints() {
     assertThat(
             MetricAdapter.toSamples(
                 "full_name",
@@ -103,7 +101,7 @@ public class MetricAdapterTest {
   }
 
   @Test
-  public void toSamples_DoublePoints() {
+  void toSamples_DoublePoints() {
     assertThat(
             MetricAdapter.toSamples(
                 "full_name",
@@ -144,7 +142,7 @@ public class MetricAdapterTest {
   }
 
   @Test
-  public void toSamples_SummaryPoints() {
+  void toSamples_SummaryPoints() {
     assertThat(
             MetricAdapter.toSamples(
                 "full_name",
@@ -212,10 +210,14 @@ public class MetricAdapterTest {
   }
 
   @Test
-  public void toMetricFamilySamples() {
+  void toMetricFamilySamples() {
     Descriptor descriptor =
         Descriptor.create(
-            "name", "description", "1", Descriptor.Type.MONOTONIC_DOUBLE, Labels.of("kc", "vc"));
+            "instrument.name",
+            "description",
+            "1",
+            Descriptor.Type.MONOTONIC_DOUBLE,
+            Labels.of("kc", "vc"));
 
     MetricData metricData =
         MetricData.create(
@@ -228,12 +230,12 @@ public class MetricAdapterTest {
     assertThat(MetricAdapter.toMetricFamilySamples(metricData))
         .isEqualTo(
             new MetricFamilySamples(
-                "full_name",
-                Type.COUNTER,
+                "instrument_name",
+                Collector.Type.COUNTER,
                 descriptor.getDescription(),
                 ImmutableList.of(
                     new Sample(
-                        "full_name",
+                        "instrument_name",
                         ImmutableList.of("kc", "kp"),
                         ImmutableList.of("vc", "vp"),
                         5))));

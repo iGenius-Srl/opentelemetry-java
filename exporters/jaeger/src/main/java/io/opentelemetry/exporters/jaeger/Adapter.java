@@ -33,7 +33,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Map.Entry;
 import javax.annotation.concurrent.ThreadSafe;
 
 /** Adapts OpenTelemetry objects to Jaeger objects. */
@@ -44,6 +43,8 @@ final class Adapter {
   static final String KEY_SPAN_KIND = "span.kind";
   static final String KEY_SPAN_STATUS_MESSAGE = "span.status.message";
   static final String KEY_SPAN_STATUS_CODE = "span.status.code";
+  static final String KEY_INSTRUMENTATION_LIBRARY_NAME = "otel.instrumentation_library.name";
+  static final String KEY_INSTRUMENTATION_LIBRARY_VERSION = "otel.instrumentation_library.version";
 
   private Adapter() {}
 
@@ -114,6 +115,20 @@ final class Adapter {
             .setVType(Model.ValueType.INT64)
             .build());
 
+    target.addTags(
+        Model.KeyValue.newBuilder()
+            .setKey(KEY_INSTRUMENTATION_LIBRARY_NAME)
+            .setVStr(span.getInstrumentationLibraryInfo().getName())
+            .build());
+
+    if (span.getInstrumentationLibraryInfo().getVersion() != null) {
+      target.addTags(
+          Model.KeyValue.newBuilder()
+              .setKey(KEY_INSTRUMENTATION_LIBRARY_VERSION)
+              .setVStr(span.getInstrumentationLibraryInfo().getVersion())
+              .build());
+    }
+
     if (!span.getStatus().isOk()) {
       target.addTags(toKeyValue(KEY_ERROR, AttributeValue.booleanAttributeValue(true)));
     }
@@ -165,8 +180,8 @@ final class Adapter {
    */
   @VisibleForTesting
   static Collection<Model.KeyValue> toKeyValues(Map<String, AttributeValue> attributes) {
-    ArrayList<Model.KeyValue> tags = new ArrayList<>(attributes.size());
-    for (Entry<String, AttributeValue> entry : attributes.entrySet()) {
+    List<Model.KeyValue> tags = new ArrayList<>(attributes.size());
+    for (Map.Entry<String, AttributeValue> entry : attributes.entrySet()) {
       tags.add(toKeyValue(entry.getKey(), entry.getValue()));
     }
     return tags;
@@ -181,7 +196,7 @@ final class Adapter {
    */
   @VisibleForTesting
   static Collection<Model.KeyValue> toKeyValues(ReadableAttributes attributes) {
-    final ArrayList<Model.KeyValue> tags = new ArrayList<>(attributes.size());
+    final List<Model.KeyValue> tags = new ArrayList<>(attributes.size());
     attributes.forEach(
         new KeyValueConsumer<AttributeValue>() {
           @Override

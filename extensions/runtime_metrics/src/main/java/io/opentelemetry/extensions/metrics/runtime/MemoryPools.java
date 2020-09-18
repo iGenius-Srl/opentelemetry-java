@@ -18,9 +18,8 @@ package io.opentelemetry.extensions.metrics.runtime;
 
 import io.opentelemetry.OpenTelemetry;
 import io.opentelemetry.common.Labels;
-import io.opentelemetry.metrics.AsynchronousInstrument.Callback;
+import io.opentelemetry.metrics.AsynchronousInstrument;
 import io.opentelemetry.metrics.AsynchronousInstrument.LongResult;
-import io.opentelemetry.metrics.LongSumObserver;
 import io.opentelemetry.metrics.LongUpDownSumObserver;
 import io.opentelemetry.metrics.Meter;
 import java.lang.management.ManagementFactory;
@@ -42,9 +41,9 @@ import java.util.List;
  * <p>Example metrics being exported: Component
  *
  * <pre>
- *   jvm_memory_area{type="used",area="heap"} 2000000
- *   jvm_memory_area{type="committed",area="nonheap"} 200000
- *   jvm_memory_pool{type="used",pool="PS Eden Space"} 2000
+ *   runtime.jvm.memory.area{type="used",area="heap"} 2000000
+ *   runtime.jvm.memory.area{type="committed",area="nonheap"} 200000
+ *   runtime.jvm.memory.area{type="used",pool="PS Eden Space"} 2000
  * </pre>
  */
 public final class MemoryPools {
@@ -61,18 +60,18 @@ public final class MemoryPools {
   private final List<MemoryPoolMXBean> poolBeans;
   private final Meter meter;
 
-  /** Constructs a new module that is capable to export metrics about "jvm_memory". */
+  /** Constructs a new module that will export metrics in the "runtime.jvm.memory" namespace. */
   public MemoryPools() {
     this.memoryBean = ManagementFactory.getMemoryMXBean();
     this.poolBeans = ManagementFactory.getMemoryPoolMXBeans();
-    this.meter = OpenTelemetry.getMeter("jvm_memory");
+    this.meter = OpenTelemetry.getMeter("io.opentelemetry.extensions.metrics.runtime.memory");
   }
 
   /** Export only the "area" metric. */
   public void exportMemoryAreaMetric() {
     final LongUpDownSumObserver areaMetric =
         this.meter
-            .longUpDownSumObserverBuilder("area")
+            .longUpDownSumObserverBuilder("runtime.jvm.memory.area")
             .setDescription("Bytes of a given JVM memory area.")
             .setUnit("By")
             .build();
@@ -84,7 +83,7 @@ public final class MemoryPools {
     final Labels maxHeap = Labels.of(TYPE_LABEL_KEY, MAX, AREA_LABEL_KEY, HEAP);
     final Labels maxNonHeap = Labels.of(TYPE_LABEL_KEY, MAX, AREA_LABEL_KEY, NON_HEAP);
     areaMetric.setCallback(
-        new LongSumObserver.Callback<LongResult>() {
+        new AsynchronousInstrument.Callback<LongResult>() {
           @Override
           public void update(LongResult resultLongObserver) {
             MemoryUsage heapUsage = memoryBean.getHeapMemoryUsage();
@@ -103,7 +102,7 @@ public final class MemoryPools {
   public void exportMemoryPoolMetric() {
     final LongUpDownSumObserver poolMetric =
         this.meter
-            .longUpDownSumObserverBuilder("pool")
+            .longUpDownSumObserverBuilder("runtime.jvm.memory.pool")
             .setDescription("Bytes of a given JVM memory pool.")
             .setUnit("By")
             .build();
@@ -116,7 +115,7 @@ public final class MemoryPools {
       maxLabelSets.add(Labels.of(TYPE_LABEL_KEY, MAX, POOL_LABEL_KEY, pool.getName()));
     }
     poolMetric.setCallback(
-        new Callback<LongResult>() {
+        new AsynchronousInstrument.Callback<LongResult>() {
           @Override
           public void update(LongResult resultLongObserver) {
             for (int i = 0; i < poolBeans.size(); i++) {
