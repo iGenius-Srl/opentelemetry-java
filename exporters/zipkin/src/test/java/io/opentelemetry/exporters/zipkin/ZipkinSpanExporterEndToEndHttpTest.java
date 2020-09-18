@@ -40,7 +40,7 @@ import zipkin2.Span;
 import zipkin2.codec.Encoding;
 import zipkin2.codec.SpanBytesEncoder;
 import zipkin2.junit.ZipkinRule;
-import zipkin2.reporter.okhttp3.OkHttpSender;
+import zipkin2.reporter.okhttp3.ZipkinSpanExporterSender2;
 
 /**
  * Tests which use Zipkin's {@link ZipkinRule} to verify that the {@link ZipkinSpanExporter} can
@@ -127,7 +127,8 @@ public class ZipkinSpanExporterEndToEndHttpTest {
   private static ZipkinSpanExporter buildZipkinExporter(
       String endpoint, Encoding encoding, SpanBytesEncoder encoder) {
     return ZipkinSpanExporter.newBuilder()
-        .setSender(OkHttpSender.newBuilder().endpoint(endpoint).encoding(encoding).build())
+        .setSender(
+            ZipkinSpanExporterSender2.newBuilder().endpoint(endpoint).encoding(encoding).build())
         .setServiceName(SERVICE_NAME)
         .setEncoder(encoder)
         .build();

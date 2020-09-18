@@ -89,11 +89,11 @@ public final class ZipkinSpanExporter implements SpanExporter {
   static final String KEY_INSTRUMENTATION_LIBRARY_VERSION = "otel.instrumentation_library.version";
 
   private final BytesEncoder<Span> encoder;
-  private final ZipkinSpanExporterSender sender;
+  private final ZipkinSpanExporterSender2 sender;
   private final Endpoint localEndpoint;
 
   ZipkinSpanExporter(
-      BytesEncoder<Span> encoder, ZipkinSpanExporterSender sender, String serviceName) {
+      BytesEncoder<Span> encoder, ZipkinSpanExporterSender2 sender, String serviceName) {
     this.encoder = encoder;
     this.sender = sender;
     this.localEndpoint = produceLocalEndpoint(serviceName);
@@ -312,10 +312,9 @@ public final class ZipkinSpanExporter implements SpanExporter {
     private static final String KEY_SERVICE_NAME = "otel.zipkin.service.name";
     private static final String KEY_ENDPOINT = "otel.zipkin.endpoint";
     private BytesEncoder<Span> encoder = SpanBytesEncoder.JSON_V2;
-    private ZipkinSpanExporterSender sender;
+    private ZipkinSpanExporterSender2 sender;
     private String token = "";
     private String serviceName = DEFAULT_SERVICE_NAME;
-    private String endpoint = DEFAULT_ENDPOINT;
 
     /**
      * Label of the remote node in the service graph, such as "favstar". Avoid names with variables
@@ -352,7 +351,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @return this.
      * @since 0.4.0
      */
-    public Builder setSender(ZipkinSpanExporterSender sender) {
+    public Builder setSender(ZipkinSpanExporterSender2 sender) {
       this.sender = sender;
       return this;
     }
@@ -386,7 +385,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @since 0.4.0
      */
     public Builder setEndpoint(String endpoint) {
-      setSender(ZipkinSpanExporterSender.create(endpoint, token));
+      setSender(ZipkinSpanExporterSender2.create(endpoint, token));
       return this;
     }
 
