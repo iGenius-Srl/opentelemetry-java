@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.Nullable;
+import okhttp3.HttpUrl;
 import zipkin2.Callback;
 import zipkin2.Endpoint;
 import zipkin2.Span;
@@ -296,6 +297,17 @@ public final class ZipkinSpanExporter implements SpanExporter {
 
   public void setRefreshedToken(String token) {
     sender.token = token;
+  }
+
+  public void setEndPoint(String endpoint) {
+    if (endpoint == null) {
+      throw new NullPointerException("endpoint == null");
+    }
+    try {
+      sender.endpoint = HttpUrl.get(endpoint);
+    } catch (IllegalArgumentException e) {
+      logger.log(Level.SEVERE, "Failed to update endpoint", e);
+    }
   }
 
   /**

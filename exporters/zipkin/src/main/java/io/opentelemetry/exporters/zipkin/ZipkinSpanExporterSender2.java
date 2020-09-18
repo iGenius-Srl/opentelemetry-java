@@ -134,7 +134,7 @@ public final class ZipkinSpanExporterSender2 extends Sender {
     }
   }
 
-  final HttpUrl endpoint;
+  HttpUrl endpoint;
   final OkHttpClient client;
   final RequestBodyMessageEncoder encoder;
   final Encoding encoding;
@@ -284,7 +284,7 @@ public final class ZipkinSpanExporterSender2 extends Sender {
       body = new BufferRequestBody(body.contentType(), gzipped);
     }
     if (!token.isEmpty()) {
-      request.addHeader("Authorization", token);
+      request.addHeader("Authorization", "Bearer " + token);
     }
     request.post(body);
     return request.build();
