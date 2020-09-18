@@ -12,7 +12,6 @@ package io.opentelemetry.exporters.zipkin; /*
                                             * the License.
                                             */
 
-
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.SynchronousQueue;
@@ -36,7 +35,6 @@ import zipkin2.codec.Encoding;
 import zipkin2.internal.Platform;
 import zipkin2.reporter.ClosedSenderException;
 import zipkin2.reporter.Sender;
-
 
 public final class ZipkinSpanExporterSender2 extends Sender {
 
