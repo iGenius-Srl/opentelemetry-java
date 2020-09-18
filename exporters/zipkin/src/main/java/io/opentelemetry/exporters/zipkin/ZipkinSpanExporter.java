@@ -31,7 +31,6 @@ import io.opentelemetry.sdk.trace.export.SpanExporter;
 import io.opentelemetry.trace.Span.Kind;
 import io.opentelemetry.trace.Status;
 import io.opentelemetry.trace.attributes.SemanticAttributes;
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.ArrayList;
@@ -291,11 +290,7 @@ public final class ZipkinSpanExporter implements SpanExporter {
 
   @Override
   public CompletableResultCode shutdown() {
-    try {
-      sender.close();
-    } catch (IOException e) {
-      logger.log(Level.WARNING, "Exception while closing the Zipkin Sender instance", e);
-    }
+    sender.close();
     return CompletableResultCode.ofSuccess();
   }
 
@@ -423,9 +418,6 @@ public final class ZipkinSpanExporter implements SpanExporter {
      * @since 0.4.0
      */
     public ZipkinSpanExporter build() {
-      if (sender == null) {
-        sender = OkHttpSender.create(endpoint);
-      }
       return new ZipkinSpanExporter(this.encoder, this.sender, this.serviceName);
     }
   }
