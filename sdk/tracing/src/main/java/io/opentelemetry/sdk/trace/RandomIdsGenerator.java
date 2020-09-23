@@ -33,7 +33,7 @@ public final class RandomIdsGenerator implements IdsGenerator {
     long id;
     Random random = new Random();
     do {
-      id = random.nextLong();
+      id = nextLong(random);
     } while (id == INVALID_ID);
     return new SpanId(id);
   }
@@ -44,9 +44,19 @@ public final class RandomIdsGenerator implements IdsGenerator {
     long idLo;
     Random random = new Random();
     do {
-      idHi = random.nextLong();
-      idLo = random.nextLong();
+      idHi = nextLong(random);
+      idLo = nextLong(random);
     } while (idHi == INVALID_ID && idLo == INVALID_ID);
     return new TraceId(idHi, idLo);
+  }
+
+  long nextLong(Random rng) {
+    long bits;
+    long val;
+    do {
+      bits = (rng.nextLong() << 1) >>> 1;
+      val = bits % Long.MAX_VALUE;
+    } while (bits - val + (Long.MAX_VALUE - 1) < 0L);
+    return val;
   }
 }
